@@ -28,9 +28,8 @@ class SyncService {
 
     try {
       totalSynced += await _syncUsers();
-      
-      // في المستقبل عند إضافة جداول جديدة، يمكنك استدعاء دوال مزامنتها وجمع عدد السجلات هنا:
-      // totalSynced += await _syncAttendance();
+      totalSynced += await _syncDepartments();
+      totalSynced += await _syncDeletedDepartments();
     } catch (e) {
       debugPrint('Sync execution failed: $e');
       rethrow;
@@ -75,4 +74,93 @@ class SyncService {
     return syncedCount;
   }
 
+  // مزامنة جدول الأقسام (departments) وتُرجع عدد السجلات المزامنة
+  Future<int> _syncDepartments() async {
+    final unsyncedDepts = await DatabaseHelper.instance.getUnsyncedDepartments();
+    if (unsyncedDepts.isEmpty) return 0;
+
+    debugPrint('Found ${unsyncedDepts.length} unsynced departments. Starting sync...');
+    final firestore = FirebaseFirestore.instance;
+    int syncedCount = 0;
+
+    for (final deptMap in unsyncedDepts) {
+      final int localId = deptMap['id'];
+      final String? firestoreId = deptMap['firestore_id'];
+      try {
+        if (firestoreId == null || firestoreId.isEmpty) {
+          // إنشاء مستند جديد
+          final docRef = firestore.collection('departments').doc();
+          final String? localCreatedAt = deptMap['created_at'];
+          await docRef.set({
+            'id': docRef.id,
+            'name': deptMap['name'],
+            'head_id': deptMap['head_id'],
+            'head_name': deptMap['head_name'],
+            'createdAt': localCreatedAt != null
+                ? Timestamp.fromDate(DateTime.parse(localCreatedAt))
+                : FieldValue.serverTimestamp(),
+          });
+
+          // تحديث حالة المزامنة وحفظ الـ firestore_id محلياً
+          final db = await DatabaseHelper.instance.database;
+          await db.update(
+            'departments',
+            {
+              'sync': 1,
+              'firestore_id': docRef.id,
+            },
+            where: 'id = ?',
+            whereArgs: [localId],
+          );
+        } else {
+          // تحديث مستند موجود في السيرفر لمنع التكرار عند التعديل
+          await firestore.collection('departments').doc(firestoreId).set({
+            'id': firestoreId,
+            'name': deptMap['name'],
+            'head_id': deptMap['head_id'],
+            'head_name': deptMap['head_name'],
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+
+          // تحديث حالة المزامنة في SQLite محلياً إلى 1
+          await DatabaseHelper.instance.updateDepartmentSyncStatus(localId, 1);
+        }
+        syncedCount++;
+        debugPrint('Department with ID $localId synced successfully.');
+      } catch (e) {
+        debugPrint('Failed to sync department with ID $localId: $e');
+      }
+    }
+
+    return syncedCount;
+  }
+
+  // مزامنة حذف الأقسام مع Firestore
+  Future<int> _syncDeletedDepartments() async {
+    final deletedDepts = await DatabaseHelper.instance.getDeletedDepartments();
+    if (deletedDepts.isEmpty) return 0;
+
+    debugPrint('Found ${deletedDepts.length} pending department deletions. Starting sync...');
+    final firestore = FirebaseFirestore.instance;
+    int syncedCount = 0;
+
+    for (final deptMap in deletedDepts) {
+      final int localId = deptMap['id'];
+      final String? firestoreId = deptMap['firestore_id'];
+      try {
+        if (firestoreId != null && firestoreId.isNotEmpty) {
+          // حذف المستند من Firestore
+          await firestore.collection('departments').doc(firestoreId).delete();
+        }
+        // حذف القسم نهائياً من SQLite محلياً
+        await DatabaseHelper.instance.deleteDepartmentFully(localId);
+        syncedCount++;
+        debugPrint('Deleted department with local ID $localId synced successfully.');
+      } catch (e) {
+        debugPrint('Failed to sync deletion for local ID $localId: $e');
+      }
+    }
+
+    return syncedCount;
+  }
 }

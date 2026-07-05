@@ -8,6 +8,8 @@ import 'package:student_attendance_system/features/login/login_view.dart';
 import 'package:student_attendance_system/features/login/login_view_model.dart';
 import 'package:student_attendance_system/features/sigin/sigin_view_model.dart';
 import 'package:student_attendance_system/features/teacher_screens/home/teacher_home_view_model.dart';
+import 'package:student_attendance_system/features/vice_dean_for_academic _affairs/departments/departments_view_model.dart';
+import 'package:student_attendance_system/features/vice_dean_for_academic _affairs/head_accounts/head_accounts_view_model.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:student_attendance_system/features/teacher_screens/home/teacher_home_view.dart';
 import 'package:student_attendance_system/firebase_options.dart';
@@ -18,6 +20,7 @@ void main() async {
 
   // تنظيف الكاش المحلي لحل مشاكل تعليق اتصالات Firestore على ويندوز
   try {
+    await FirebaseFirestore.instance.terminate();
     await FirebaseFirestore.instance.clearPersistence();
   } catch (e) {
     debugPrint("Failed to clear Firestore persistence: $e");
@@ -41,6 +44,8 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => LoginViewModel()),
         ChangeNotifierProvider(create: (_) => TeacherHomeViewModel()),
         ChangeNotifierProvider(create: (_) => SiginViewModel()),
+        ChangeNotifierProvider(create: (_) => DepartmentsViewModel()),
+        ChangeNotifierProvider(create: (_) => HeadAccountsViewModel()),
       ],
       child: MaterialApp(
         title: 'نظام حضور الطلاب',

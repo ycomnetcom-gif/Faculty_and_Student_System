@@ -4,6 +4,7 @@ import 'package:student_attendance_system/features/login/login_view.dart';
 import 'package:student_attendance_system/core/sync_service.dart';
 import 'package:student_attendance_system/core/database_helper.dart';
 import 'package:student_attendance_system/features/teacher_screens/head_of_department/head_of_department_view.dart';
+import 'package:student_attendance_system/features/vice_dean_for_academic _affairs/vice_dean_academic_view.dart';
 import 'teacher_home_view_model.dart';
 
 class TeacherHomeView extends StatefulWidget {
@@ -56,7 +57,7 @@ class _TeacherHomeViewState extends State<TeacherHomeView> {
 
     try {
       final syncedCount = await SyncService.instance.triggerSync();
-      
+
       if (!mounted) return;
 
       if (syncedCount > 0) {
@@ -87,7 +88,7 @@ class _TeacherHomeViewState extends State<TeacherHomeView> {
       }
     } catch (e) {
       if (!mounted) return;
-      
+
       String errorMsg = 'حدث خطأ أثناء المزامنة';
       if (e.toString().contains('no_internet')) {
         errorMsg = 'لا يتوفر اتصال بالإنترنت حالياً. يرجى التحقق من الشبكة.';
@@ -116,7 +117,10 @@ class _TeacherHomeViewState extends State<TeacherHomeView> {
     }
   }
 
-  void _handleSignOut(BuildContext context, TeacherHomeViewModel viewModel) async {
+  void _handleSignOut(
+    BuildContext context,
+    TeacherHomeViewModel viewModel,
+  ) async {
     final navigator = Navigator.of(context);
     final messenger = ScaffoldMessenger.of(context);
 
@@ -127,13 +131,17 @@ class _TeacherHomeViewState extends State<TeacherHomeView> {
           'تسجيل الخروج',
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
-        content: const Text('هل أنت متأكد من رغبتك في تسجيل الخروج من التطبيق؟'),
+        content: const Text(
+          'هل أنت متأكد من رغبتك في تسجيل الخروج من التطبيق؟',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
             child: Text(
               'إلغاء',
-              style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6)),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+              ),
             ),
           ),
           ElevatedButton(
@@ -154,7 +162,7 @@ class _TeacherHomeViewState extends State<TeacherHomeView> {
     // 1. تحقق مما إذا كانت هناك بيانات غير متزامنة محلياً
     try {
       final unsynced = await DatabaseHelper.instance.getUnsyncedUsers();
-      
+
       if (unsynced.isNotEmpty) {
         // إظهار تنبيه جاري المزامنة قبل الخروج
         messenger.showSnackBar(
@@ -169,7 +177,7 @@ class _TeacherHomeViewState extends State<TeacherHomeView> {
         } catch (syncError) {
           // في حال فشل المزامنة (مثل انقطاع الإنترنت)
           if (!context.mounted) return;
-          
+
           final forceSignOut = await showDialog<bool>(
             context: context,
             builder: (context) => AlertDialog(
@@ -225,7 +233,7 @@ class _TeacherHomeViewState extends State<TeacherHomeView> {
         return Scaffold(
           drawer: _buildDrawer(context, profile, isDark),
           appBar: AppBar(
-            title: const Text('لوحة تحكم المدرس'),
+            title: const Text('لوحة التحكم'),
             actions: [
               _isSyncingLocal
                   ? const Padding(
@@ -235,7 +243,9 @@ class _TeacherHomeViewState extends State<TeacherHomeView> {
                         height: 20,
                         child: CircularProgressIndicator(
                           strokeWidth: 2.5,
-                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            Colors.white,
+                          ),
                         ),
                       ),
                     )
@@ -275,12 +285,13 @@ class _TeacherHomeViewState extends State<TeacherHomeView> {
             ),
             child: SafeArea(
               child: viewModel.isLoading && profile == null
-                  ? const Center(
-                      child: CircularProgressIndicator(),
-                    )
+                  ? const Center(child: CircularProgressIndicator())
                   : SingleChildScrollView(
                       physics: const BouncingScrollPhysics(),
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 16,
+                      ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -303,7 +314,7 @@ class _TeacherHomeViewState extends State<TeacherHomeView> {
 
                           // 2. شبكة الأزرار والبطاقات للخدمات
                           _buildServicesGrid(context, profile, isDark),
-                          
+
                           const SizedBox(height: 24),
                         ],
                       ),
@@ -316,7 +327,11 @@ class _TeacherHomeViewState extends State<TeacherHomeView> {
   }
 
   // بطاقة معلومات المدرس المميزة
-  Widget _buildTeacherCard(BuildContext context, TeacherProfile? profile, bool isDark) {
+  Widget _buildTeacherCard(
+    BuildContext context,
+    TeacherProfile? profile,
+    bool isDark,
+  ) {
     final theme = Theme.of(context);
     final primaryColor = theme.colorScheme.primary;
 
@@ -334,14 +349,13 @@ class _TeacherHomeViewState extends State<TeacherHomeView> {
                   primaryColor.withOpacity(0.2),
                   theme.colorScheme.secondary.withOpacity(0.1),
                 ]
-              : [
-                  primaryColor,
-                  theme.colorScheme.secondary,
-                ],
+              : [primaryColor, theme.colorScheme.secondary],
         ),
         boxShadow: [
           BoxShadow(
-            color: (isDark ? Colors.black : primaryColor).withOpacity(isDark ? 0.2 : 0.15),
+            color: (isDark ? Colors.black : primaryColor).withOpacity(
+              isDark ? 0.2 : 0.15,
+            ),
             blurRadius: 20,
             offset: const Offset(0, 10),
           ),
@@ -395,7 +409,12 @@ class _TeacherHomeViewState extends State<TeacherHomeView> {
                     child: ClipOval(
                       child: Center(
                         child: Text(
-                          profile.name.split(' ').where((s) => s.isNotEmpty).take(2).map((s) => s[0]).join(''),
+                          profile.name
+                              .split(' ')
+                              .where((s) => s.isNotEmpty)
+                              .take(2)
+                              .map((s) => s[0])
+                              .join(''),
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 22,
@@ -414,7 +433,10 @@ class _TeacherHomeViewState extends State<TeacherHomeView> {
                         Row(
                           children: [
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 2,
+                              ),
                               decoration: BoxDecoration(
                                 color: Colors.white.withOpacity(0.2),
                                 borderRadius: BorderRadius.circular(6),
@@ -493,7 +515,11 @@ class _TeacherHomeViewState extends State<TeacherHomeView> {
   }
 
   // شبكة الخدمات والأزرار
-  Widget _buildServicesGrid(BuildContext context, TeacherProfile? profile, bool isDark) {
+  Widget _buildServicesGrid(
+    BuildContext context,
+    TeacherProfile? profile,
+    bool isDark,
+  ) {
     final services = [
       _ServiceItem(
         title: 'باركود التحضير',
@@ -525,15 +551,31 @@ class _TeacherHomeViewState extends State<TeacherHomeView> {
       ),
       if (profile != null &&
           (profile.academicTitle == 'رئيس قسم' ||
-           profile.academicTitle == 'مطور' ||
-           profile.academicTitle.toLowerCase() == 'developer' ||
-           profile.academicTitle.toLowerCase() == 'admin'))
+              profile.academicTitle == 'مطور' ||
+              profile.academicTitle.toLowerCase() == 'developer' ||
+              profile.academicTitle.toLowerCase() == 'admin'))
         _ServiceItem(
           title: 'مهام رئيس القسم',
           subtitle: 'مراجعة الطلبات والتحكم',
           icon: Icons.admin_panel_settings_rounded,
           color: const Color(0xFFDC2626), // أحمر
           onTap: () => _navigateToService(context, 'مهام رئيس القسم'),
+        ),
+      if (profile != null &&
+          (profile.academicTitle == 'نائب العميد للشؤون الأكاديمية' ||
+              profile.academicTitle == 'نائب العميد' ||
+              profile.academicTitle.toLowerCase() == 'vice_dean_academic' ||
+              profile.academicTitle.toLowerCase() == 'vice_dean' ||
+              profile.academicTitle == 'مطور' ||
+              profile.academicTitle.toLowerCase() == 'developer' ||
+              profile.academicTitle.toLowerCase() == 'admin'))
+        _ServiceItem(
+          title: 'مهام نائب العميد',
+          subtitle: 'اعتماد المناهج والجداول والخطط الدراسية',
+          icon: Icons.admin_panel_settings_outlined,
+          color: const Color(0xFF4F46E5), // نختار لون إنديغو مميز
+          onTap: () =>
+              _navigateToService(context, 'مهام نائب العميد للشؤون الأكاديمية'),
         ),
     ];
 
@@ -555,7 +597,11 @@ class _TeacherHomeViewState extends State<TeacherHomeView> {
   }
 
   // بطاقة الخدمة الفردية
-  Widget _buildServiceCard(BuildContext context, _ServiceItem service, bool isDark) {
+  Widget _buildServiceCard(
+    BuildContext context,
+    _ServiceItem service,
+    bool isDark,
+  ) {
     final theme = Theme.of(context);
 
     return Container(
@@ -563,7 +609,9 @@ class _TeacherHomeViewState extends State<TeacherHomeView> {
         color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: isDark ? Colors.white.withOpacity(0.05) : theme.colorScheme.primary.withOpacity(0.05),
+          color: isDark
+              ? Colors.white.withOpacity(0.05)
+              : theme.colorScheme.primary.withOpacity(0.05),
           width: 1.5,
         ),
         boxShadow: [
@@ -594,13 +642,9 @@ class _TeacherHomeViewState extends State<TeacherHomeView> {
                     color: service.color.withOpacity(0.12),
                     borderRadius: BorderRadius.circular(16),
                   ),
-                  child: Icon(
-                    service.icon,
-                    color: service.color,
-                    size: 32,
-                  ),
+                  child: Icon(service.icon, color: service.color, size: 32),
                 ),
-                
+
                 // النصوص
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -635,15 +679,30 @@ class _TeacherHomeViewState extends State<TeacherHomeView> {
   }
 
   // بناء الـ Drawer الجانبي المميز
-  Widget _buildDrawer(BuildContext context, TeacherProfile? profile, bool isDark) {
+  Widget _buildDrawer(
+    BuildContext context,
+    TeacherProfile? profile,
+    bool isDark,
+  ) {
     final theme = Theme.of(context);
     final primaryColor = theme.colorScheme.primary;
 
-    final isHeadOrDev = profile != null &&
+    final isHeadOrDev =
+        profile != null &&
         (profile.academicTitle == 'رئيس قسم' ||
-         profile.academicTitle == 'مطور' ||
-         profile.academicTitle.toLowerCase() == 'developer' ||
-         profile.academicTitle.toLowerCase() == 'admin');
+            profile.academicTitle == 'مطور' ||
+            profile.academicTitle.toLowerCase() == 'developer' ||
+            profile.academicTitle.toLowerCase() == 'admin');
+
+    final isViceDeanOrDev =
+        profile != null &&
+        (profile.academicTitle == 'نائب العميد للشؤون الأكاديمية' ||
+            profile.academicTitle == 'نائب العميد' ||
+            profile.academicTitle.toLowerCase() == 'vice_dean_academic' ||
+            profile.academicTitle.toLowerCase() == 'vice_dean' ||
+            profile.academicTitle == 'مطور' ||
+            profile.academicTitle.toLowerCase() == 'developer' ||
+            profile.academicTitle.toLowerCase() == 'admin');
 
     return Drawer(
       child: Container(
@@ -656,14 +715,8 @@ class _TeacherHomeViewState extends State<TeacherHomeView> {
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: isDark
-                      ? [
-                          const Color(0xFF1E293B),
-                          const Color(0xFF0F172A),
-                        ]
-                      : [
-                          primaryColor,
-                          theme.colorScheme.secondary,
-                        ],
+                      ? [const Color(0xFF1E293B), const Color(0xFF0F172A)]
+                      : [primaryColor, theme.colorScheme.secondary],
                 ),
               ),
               currentAccountPicture: Container(
@@ -674,7 +727,12 @@ class _TeacherHomeViewState extends State<TeacherHomeView> {
                 child: Center(
                   child: Text(
                     profile != null
-                        ? profile.name.split(' ').where((s) => s.isNotEmpty).take(2).map((s) => s[0]).join('')
+                        ? profile.name
+                              .split(' ')
+                              .where((s) => s.isNotEmpty)
+                              .take(2)
+                              .map((s) => s[0])
+                              .join('')
                         : 'أ',
                     style: const TextStyle(
                       color: Colors.white,
@@ -686,7 +744,10 @@ class _TeacherHomeViewState extends State<TeacherHomeView> {
               ),
               accountName: Text(
                 profile?.name ?? 'تحميل الاسم...',
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
               ),
               accountEmail: Text(
                 profile?.email ?? 'تحميل البريد...',
@@ -736,10 +797,16 @@ class _TeacherHomeViewState extends State<TeacherHomeView> {
             if (isHeadOrDev) ...[
               const Divider(),
               ListTile(
-                leading: const Icon(Icons.admin_panel_settings_outlined, color: Colors.red),
+                leading: const Icon(
+                  Icons.admin_panel_settings_outlined,
+                  color: Colors.red,
+                ),
                 title: const Text(
                   'مهام رئيس القسم',
-                  style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                    color: Colors.red,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 onTap: () {
                   Navigator.of(context).pop();
@@ -747,14 +814,43 @@ class _TeacherHomeViewState extends State<TeacherHomeView> {
                 },
               ),
             ],
+            if (isViceDeanOrDev) ...[
+              const Divider(),
+              ListTile(
+                leading: const Icon(
+                  Icons.admin_panel_settings_outlined,
+                  color: Colors.indigo,
+                ),
+                title: const Text(
+                  'مهام نائب العميد للشؤون الأكاديمية',
+                  style: TextStyle(
+                    color: Colors.indigo,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  _navigateToService(
+                    context,
+                    'مهام نائب العميد للشؤون الأكاديمية',
+                  );
+                },
+              ),
+            ],
             const Spacer(),
             const Divider(),
             ListTile(
-              leading: const Icon(Icons.logout_rounded, color: Colors.redAccent),
+              leading: const Icon(
+                Icons.logout_rounded,
+                color: Colors.redAccent,
+              ),
               title: const Text('تسجيل الخروج'),
               onTap: () {
                 Navigator.of(context).pop();
-                final viewModel = Provider.of<TeacherHomeViewModel>(context, listen: false);
+                final viewModel = Provider.of<TeacherHomeViewModel>(
+                  context,
+                  listen: false,
+                );
                 _handleSignOut(context, viewModel);
               },
             ),
@@ -769,9 +865,15 @@ class _TeacherHomeViewState extends State<TeacherHomeView> {
   void _navigateToService(BuildContext context, String serviceName) {
     ScaffoldMessenger.of(context).clearSnackBars();
     if (serviceName == 'مهام رئيس القسم') {
-      Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const HeadOfDepartmentView()),
-      );
+      Navigator.of(
+        context,
+      ).push(MaterialPageRoute(builder: (_) => const HeadOfDepartmentView()));
+      return;
+    }
+    if (serviceName == 'مهام نائب العميد للشؤون الأكاديمية') {
+      Navigator.of(
+        context,
+      ).push(MaterialPageRoute(builder: (_) => const ViceDeanAcademicView()));
       return;
     }
     ScaffoldMessenger.of(context).showSnackBar(
@@ -785,9 +887,7 @@ class _TeacherHomeViewState extends State<TeacherHomeView> {
         ),
         backgroundColor: Theme.of(context).colorScheme.primary,
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
     );
   }

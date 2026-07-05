@@ -88,6 +88,13 @@ class LoginViewModel extends ChangeNotifier {
                   data['acceptedAt']?.toString() ??
                   '',
             });
+          } else {
+            // الحساب غير موجود في Firestore (تم حذفه من قبل الإدارة)
+            await FirebaseAuth.instance.signOut();
+            _isLoading = false;
+            _errorMessage = 'هذا الحساب تم حذفه من قبل الإدارة ولم يعد موجوداً.';
+            notifyListeners();
+            return false;
           }
         } catch (dbError) {
           debugPrint('Error saving user data locally: $dbError');
