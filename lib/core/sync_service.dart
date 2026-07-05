@@ -60,6 +60,7 @@ class SyncService {
           'role': userMap['role'],
           'createAt': userMap['createAt'],
           'acceptAt': userMap['acceptAt'],
+          'department': userMap['department'],
         });
 
         // تحديث حالة المزامنة في SQLite محلياً إلى 1 (تمت المزامنة)

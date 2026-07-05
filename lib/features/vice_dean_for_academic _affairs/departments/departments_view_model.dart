@@ -111,15 +111,16 @@ class DepartmentsViewModel extends ChangeNotifier {
             'createdAt': FieldValue.serverTimestamp(),
           }).timeout(const Duration(seconds: 10));
 
-          // تحديث دور رئيس القسم الجديد في Firestore
+          // تحديث دور رئيس القسم الجديد وقسمه في Firestore
           try {
             await FirebaseFirestore.instance.collection('users').doc(headId).update({
               'role': 'رئيس قسم',
+              'department': deptName,
             }).timeout(const Duration(seconds: 5));
-            await DatabaseHelper.instance.updateUserRole(headId, 'رئيس قسم', sync: 1);
+            await DatabaseHelper.instance.updateUserRoleAndDepartment(headId, 'رئيس قسم', deptName, sync: 1);
           } catch (e) {
             debugPrint('Failed to update head role in Firestore, will sync later: $e');
-            await DatabaseHelper.instance.updateUserRole(headId, 'رئيس قسم', sync: 0);
+            await DatabaseHelper.instance.updateUserRoleAndDepartment(headId, 'رئيس قسم', deptName, sync: 0);
           }
 
           await DatabaseHelper.instance.insertDepartment(deptName, headId, headName, sync: 1, firestoreId: docRef.id, createdAt: isoNow);
@@ -128,8 +129,8 @@ class DepartmentsViewModel extends ChangeNotifier {
         } else {
           // حفظ القسم محلياً
           await DatabaseHelper.instance.insertDepartment(deptName, headId, headName, sync: 0, createdAt: isoNow);
-          // تحديث دور المستخدم محلياً
-          await DatabaseHelper.instance.updateUserRole(headId, 'رئيس قسم', sync: 0);
+          // تحديث دور المستخدم وقسمه محلياً
+          await DatabaseHelper.instance.updateUserRoleAndDepartment(headId, 'رئيس قسم', deptName, sync: 0);
           await loadData();
           return 'add_success_offline';
         }
@@ -150,24 +151,36 @@ class DepartmentsViewModel extends ChangeNotifier {
           }, SetOptions(merge: true)).timeout(const Duration(seconds: 10));
 
           if (headChanged) {
-            // 1. إرجاع دور رئيس القسم القديم إلى عضو هيئة تدريس
+            // 1. إرجاع دور رئيس القسم القديم إلى عضو هيئة تدريس وإزالة القسم
             try {
               await FirebaseFirestore.instance.collection('users').doc(oldHeadId).update({
                 'role': 'عضو هيئة تدريس',
+                'department': null,
               }).timeout(const Duration(seconds: 5));
-              await DatabaseHelper.instance.updateUserRole(oldHeadId, 'عضو هيئة تدريس', sync: 1);
+              await DatabaseHelper.instance.updateUserRoleAndDepartment(oldHeadId, 'عضو هيئة تدريس', null, sync: 1);
             } catch (e) {
-              await DatabaseHelper.instance.updateUserRole(oldHeadId, 'عضو هيئة تدريس', sync: 0);
+              await DatabaseHelper.instance.updateUserRoleAndDepartment(oldHeadId, 'عضو هيئة تدريس', null, sync: 0);
             }
 
-            // 2. تعيين دور رئيس القسم الجديد
+            // 2. تعيين دور رئيس القسم الجديد وقسمه
             try {
               await FirebaseFirestore.instance.collection('users').doc(headId).update({
                 'role': 'رئيس قسم',
+                'department': deptName,
               }).timeout(const Duration(seconds: 5));
-              await DatabaseHelper.instance.updateUserRole(headId, 'رئيس قسم', sync: 1);
+              await DatabaseHelper.instance.updateUserRoleAndDepartment(headId, 'رئيس قسم', deptName, sync: 1);
             } catch (e) {
-              await DatabaseHelper.instance.updateUserRole(headId, 'رئيس قسم', sync: 0);
+              await DatabaseHelper.instance.updateUserRoleAndDepartment(headId, 'رئيس قسم', deptName, sync: 0);
+            }
+          } else {
+            // تحديث اسم القسم لرئيس القسم الحالي في حال تم تغيير اسم القسم فقط
+            try {
+              await FirebaseFirestore.instance.collection('users').doc(headId).update({
+                'department': deptName,
+              }).timeout(const Duration(seconds: 5));
+              await DatabaseHelper.instance.updateUserRoleAndDepartment(headId, 'رئيس قسم', deptName, sync: 1);
+            } catch (e) {
+              await DatabaseHelper.instance.updateUserRoleAndDepartment(headId, 'رئيس قسم', deptName, sync: 0);
             }
           }
 
@@ -180,8 +193,10 @@ class DepartmentsViewModel extends ChangeNotifier {
           await DatabaseHelper.instance.updateDepartment(localId, deptName, headId, headName, sync: 0, firestoreId: fId);
 
           if (headChanged) {
-            await DatabaseHelper.instance.updateUserRole(oldHeadId, 'عضو هيئة تدريس', sync: 0);
-            await DatabaseHelper.instance.updateUserRole(headId, 'رئيس قسم', sync: 0);
+            await DatabaseHelper.instance.updateUserRoleAndDepartment(oldHeadId, 'عضو هيئة تدريس', null, sync: 0);
+            await DatabaseHelper.instance.updateUserRoleAndDepartment(headId, 'رئيس قسم', deptName, sync: 0);
+          } else {
+            await DatabaseHelper.instance.updateUserRoleAndDepartment(headId, 'رئيس قسم', deptName, sync: 0);
           }
 
           _editingDepartment = null;
@@ -207,8 +222,10 @@ class DepartmentsViewModel extends ChangeNotifier {
           );
 
           if (headChanged) {
-            await DatabaseHelper.instance.updateUserRole(oldHeadId, 'عضو هيئة تدريس', sync: 0);
-            await DatabaseHelper.instance.updateUserRole(headId, 'رئيس قسم', sync: 0);
+            await DatabaseHelper.instance.updateUserRoleAndDepartment(oldHeadId, 'عضو هيئة تدريس', null, sync: 0);
+            await DatabaseHelper.instance.updateUserRoleAndDepartment(headId, 'رئيس قسم', deptName, sync: 0);
+          } else {
+            await DatabaseHelper.instance.updateUserRoleAndDepartment(headId, 'رئيس قسم', deptName, sync: 0);
           }
 
           _editingDepartment = null;
@@ -220,7 +237,7 @@ class DepartmentsViewModel extends ChangeNotifier {
       } else {
         try {
           await DatabaseHelper.instance.insertDepartment(deptName, headId, headName, sync: 0, createdAt: isoNow);
-          await DatabaseHelper.instance.updateUserRole(headId, 'رئيس قسم', sync: 0);
+          await DatabaseHelper.instance.updateUserRoleAndDepartment(headId, 'رئيس قسم', deptName, sync: 0);
           await loadData();
           return 'add_success_offline_fallback';
         } catch (dbError) {
@@ -263,6 +280,7 @@ class DepartmentsViewModel extends ChangeNotifier {
           'name': data['name'] ?? '',
           'email': data['email'] ?? '',
           'role': data['role'] ?? '',
+          'department': data['department'],
         });
       }
 
@@ -338,16 +356,17 @@ class DepartmentsViewModel extends ChangeNotifier {
             .delete()
             .timeout(const Duration(seconds: 10));
 
-        // 2. إرجاع دور رئيس القسم في Firestore إلى عضو هيئة تدريس
+        // 2. إرجاع دور رئيس القسم في Firestore إلى عضو هيئة تدريس وإزالة القسم
         if (headId.isNotEmpty) {
           try {
             await FirebaseFirestore.instance.collection('users').doc(headId).update({
               'role': 'عضو هيئة تدريس',
+              'department': null,
             }).timeout(const Duration(seconds: 5));
-            await DatabaseHelper.instance.updateUserRole(headId, 'عضو هيئة تدريس', sync: 1);
+            await DatabaseHelper.instance.updateUserRoleAndDepartment(headId, 'عضو هيئة تدريس', null, sync: 1);
           } catch (e) {
             debugPrint('Failed to update user role to teacher on Firestore: $e');
-            await DatabaseHelper.instance.updateUserRole(headId, 'عضو هيئة تدريس', sync: 0);
+            await DatabaseHelper.instance.updateUserRoleAndDepartment(headId, 'عضو هيئة تدريس', null, sync: 0);
           }
         }
 
@@ -357,9 +376,9 @@ class DepartmentsViewModel extends ChangeNotifier {
         return 'delete_success_online';
       } else {
         // أوفلاين أو لم يتم رفعه للفايربيس أصلاً
-        // 1. إرجاع دور رئيس القسم محلياً إلى عضو هيئة تدريس بوضع المزامنة = 0
+        // 1. إرجاع دور رئيس القسم وقسمه محلياً إلى عضو هيئة تدريس/غير محدد بوضع المزامنة = 0
         if (headId.isNotEmpty) {
-          await DatabaseHelper.instance.updateUserRole(headId, 'عضو هيئة تدريس', sync: 0);
+          await DatabaseHelper.instance.updateUserRoleAndDepartment(headId, 'عضو هيئة تدريس', null, sync: 0);
         }
 
         if (dept.firestoreId != null && dept.firestoreId!.isNotEmpty) {

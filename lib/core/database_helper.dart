@@ -29,7 +29,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 4,
+      version: 5,
       onCreate: _createDB,
       onUpgrade: _onUpgrade,
     );
@@ -45,6 +45,7 @@ class DatabaseHelper {
         role TEXT NOT NULL,
         createAt TEXT,
         acceptAt TEXT,
+        department TEXT,
         sync INTEGER DEFAULT 1
       )
     ''');
@@ -89,6 +90,13 @@ class DatabaseHelper {
         debugPrint("Error upgrading to version 4: $e");
       }
     }
+    if (oldVersion < 5) {
+      try {
+        await db.execute('ALTER TABLE users ADD COLUMN department TEXT');
+      } catch (e) {
+        debugPrint("Error upgrading to version 5: $e");
+      }
+    }
   }
 
   // حفظ أو تحديث بيانات مستخدم
@@ -103,6 +111,7 @@ class DatabaseHelper {
         'role': userMap['role'] ?? '',
         'createAt': userMap['createAt']?.toString() ?? userMap['createdAt']?.toString(),
         'acceptAt': userMap['acceptAt']?.toString() ?? userMap['acceptedAt']?.toString(),
+        'department': userMap['department']?.toString(),
         'sync': userMap['sync'] ?? syncVal,
       },
       conflictAlgorithm: ConflictAlgorithm.replace,
@@ -140,12 +149,27 @@ class DatabaseHelper {
     );
   }
 
+  // تحديث دور وقسم المستخدم
+  Future<int> updateUserRoleAndDepartment(String id, String role, String? department, {int sync = 0}) async {
+    final db = await instance.database;
+    return await db.update(
+      'users',
+      {
+        'role': role,
+        'department': department,
+        'sync': sync,
+      },
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
   // جلب بيانات مستخدم بواسطة المعرف (id)
   Future<Map<String, dynamic>?> getUser(String id) async {
     final db = await instance.database;
     final maps = await db.query(
       'users',
-      columns: ['id', 'name', 'email', 'role', 'createAt', 'acceptAt', 'sync'],
+      columns: ['id', 'name', 'email', 'role', 'createAt', 'acceptAt', 'department', 'sync'],
       where: 'id = ?',
       whereArgs: [id],
     );
