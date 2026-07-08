@@ -392,18 +392,24 @@ class _DepartmentsViewState extends State<DepartmentsView> {
                                 size: 28,
                               ),
                               const SizedBox(width: 10),
-                              Text(
-                                viewModel.editingDepartment != null ? 'تعديل القسم الأكاديمي' : 'إضافة قسم أكاديمي جديد',
-                                style: theme.textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                  color: theme.colorScheme.onSurface,
+                              Expanded(
+                                child: Text(
+                                  viewModel.editingDepartment != null ? 'تعديل القسم الأكاديمي' : 'إضافة قسم أكاديمي جديد',
+                                  style: theme.textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                    color: theme.colorScheme.onSurface,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ),
                               if (viewModel.editingDepartment != null) ...[
-                                const Spacer(),
+                                const SizedBox(width: 8),
                                 TextButton.icon(
-                                  icon: const Icon(Icons.cancel_outlined, size: 18),
-                                  label: const Text('إلغاء التعديل'),
+                                  icon: const Icon(Icons.cancel_outlined, size: 16),
+                                  label: const Text(
+                                    'إلغاء',
+                                    style: TextStyle(fontSize: 12),
+                                  ),
                                   onPressed: () {
                                     viewModel.setEditingDepartment(null);
                                     _deptNameController.clear();
@@ -411,6 +417,9 @@ class _DepartmentsViewState extends State<DepartmentsView> {
                                   },
                                   style: TextButton.styleFrom(
                                     foregroundColor: AppTheme.errorColor,
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                    minimumSize: Size.zero,
+                                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                                   ),
                                 ),
                               ],
@@ -571,16 +580,19 @@ class _DepartmentsViewState extends State<DepartmentsView> {
                                       valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                                     ),
                                   )
-                                : Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Icon(viewModel.editingDepartment != null ? Icons.edit_rounded : Icons.save_rounded),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        viewModel.editingDepartment != null ? 'تعديل وحفظ التغييرات' : 'إضافة وحفظ القسم الأكاديمي',
-                                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-                                      ),
-                                    ],
+                                : FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(viewModel.editingDepartment != null ? Icons.edit_rounded : Icons.save_rounded),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          viewModel.editingDepartment != null ? 'تعديل وحفظ التغييرات' : 'إضافة وحفظ القسم الأكاديمي',
+                                          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                                        ),
+                                      ],
+                                    ),
                                   ),
                           ),
                         ],

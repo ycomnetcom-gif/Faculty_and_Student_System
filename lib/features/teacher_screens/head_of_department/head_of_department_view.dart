@@ -1,6 +1,7 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:student_attendance_system/core/theme.dart';
+import 'package:student_attendance_system/features/teacher_screens/head_of_department/registration_requests/registration_requests_view_model.dart';
 import 'registration_requests/registration_requests_view.dart';
 
 class HeadOfDepartmentView extends StatefulWidget {
@@ -11,50 +12,21 @@ class HeadOfDepartmentView extends StatefulWidget {
 }
 
 class _HeadOfDepartmentViewState extends State<HeadOfDepartmentView> {
-  int? _pendingCount;
-  bool _isLoading = false;
-
   @override
   void initState() {
     super.initState();
-    _fetchPendingCount();
-  }
-
-  // جلب عدد الطلبات المعلقة يدوياً من السيرفر
-  Future<void> _fetchPendingCount() async {
-    if (!mounted) return;
-    setState(() {
-      _isLoading = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Provider.of<RegistrationRequestsViewModel>(context, listen: false).fetchPendingCount();
     });
-
-    try {
-      final aggregateQuery = await FirebaseFirestore.instance
-          .collection('Registration_requests')
-          .where('state', isEqualTo: 'قيد المراجعة')
-          .count()
-          .get(source: AggregateSource.server)
-          .timeout(const Duration(seconds: 10));
-
-      if (mounted) {
-        setState(() {
-          _pendingCount = aggregateQuery.count;
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      debugPrint('Error fetching pending requests count: $e');
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    }
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final requestsViewModel = Provider.of<RegistrationRequestsViewModel>(context);
+    final pendingCount = requestsViewModel.pendingCount;
+    final isLoading = requestsViewModel.isLoading;
 
     return Scaffold(
       appBar: AppBar(
@@ -63,7 +35,7 @@ class _HeadOfDepartmentViewState extends State<HeadOfDepartmentView> {
         backgroundColor: Colors.transparent,
         foregroundColor: theme.colorScheme.onSurface,
         actions: [
-          _isLoading
+          isLoading
               ? const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 16),
                   child: Center(
@@ -79,7 +51,7 @@ class _HeadOfDepartmentViewState extends State<HeadOfDepartmentView> {
               : IconButton(
                   icon: const Icon(Icons.sync_rounded),
                   tooltip: 'مزامنة البيانات',
-                  onPressed: _fetchPendingCount,
+                  onPressed: () => requestsViewModel.fetchPendingCount(),
                 ),
         ],
       ),
@@ -105,7 +77,7 @@ class _HeadOfDepartmentViewState extends State<HeadOfDepartmentView> {
         ),
         child: SafeArea(
           child: RefreshIndicator(
-            onRefresh: _fetchPendingCount,
+            onRefresh: () => requestsViewModel.fetchPendingCount(),
             child: SingleChildScrollView(
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
@@ -173,7 +145,7 @@ class _HeadOfDepartmentViewState extends State<HeadOfDepartmentView> {
                       const Color(0xFF3B82F6),
                       const Color(0xFF1D4ED8),
                     ],
-                    trailingWidget: _pendingCount != null && _pendingCount! > 0
+                    trailingWidget: pendingCount != null && pendingCount > 0
                         ? Container(
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                             decoration: BoxDecoration(
@@ -181,7 +153,7 @@ class _HeadOfDepartmentViewState extends State<HeadOfDepartmentView> {
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: Text(
-                              '$_pendingCount طلب معلق',
+                              '$pendingCount طلب معلق',
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 12,
@@ -200,8 +172,9 @@ class _HeadOfDepartmentViewState extends State<HeadOfDepartmentView> {
                           builder: (_) => const RegistrationRequestsView(),
                         ),
                       );
-                      // إعادة جلب العدد عند الرجوع من صفحة الطلبات لتحديث الـ Badge
-                      _fetchPendingCount();
+                      if (mounted) {
+                        Provider.of<RegistrationRequestsViewModel>(context, listen: false).fetchPendingCount();
+                      }
                     },
                   ),
 

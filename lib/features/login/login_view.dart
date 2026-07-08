@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:student_attendance_system/core/theme.dart';
 import 'package:student_attendance_system/features/login/login_view_model.dart';
 import 'package:student_attendance_system/features/sigin/sigin_view.dart';
+import 'package:student_attendance_system/features/sigin/faculty_signup_view.dart';
 import 'package:student_attendance_system/features/teacher_screens/home/teacher_home_view.dart';
 
 class LoginView extends StatefulWidget {
@@ -16,6 +17,7 @@ class _LoginViewState extends State<LoginView> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  String _selectedUserType = 'general';
 
   @override
   void dispose() {
@@ -29,6 +31,7 @@ class _LoginViewState extends State<LoginView> {
       final success = await viewModel.login(
         _emailController.text,
         _passwordController.text,
+        userType: _selectedUserType,
       );
 
       if (mounted) {
@@ -159,7 +162,87 @@ class _LoginViewState extends State<LoginView> {
                               ],
                             ),
                           ),
-                          const SizedBox(height: 32),
+                          const SizedBox(height: 24),
+
+                          // نوع المستخدم (طالب/إدارة أو عضو هيئة تدريس)
+                          Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.onSurface.withOpacity(
+                                0.05,
+                              ),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: GestureDetector(
+                                    onTap: () {
+                                      setState(() {
+                                        _selectedUserType = 'general';
+                                      });
+                                    },
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 10,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: _selectedUserType == 'general'
+                                            ? theme.colorScheme.primary
+                                            : Colors.transparent,
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      alignment: Alignment.center,
+                                      child: Text(
+                                        'طالب',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 14,
+                                          color: _selectedUserType == 'general'
+                                              ? theme.colorScheme.onPrimary
+                                              : theme.colorScheme.onSurface
+                                                    .withOpacity(0.7),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                Expanded(
+                                  child: GestureDetector(
+                                    onTap: () {
+                                      setState(() {
+                                        _selectedUserType = 'faculty';
+                                      });
+                                    },
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 10,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: _selectedUserType == 'faculty'
+                                            ? theme.colorScheme.primary
+                                            : Colors.transparent,
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      alignment: Alignment.center,
+                                      child: Text(
+                                        'عضو هيئة تدريس',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 14,
+                                          color: _selectedUserType == 'faculty'
+                                              ? theme.colorScheme.onPrimary
+                                              : theme.colorScheme.onSurface
+                                                    .withOpacity(0.7),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 24),
 
                           Text(
                             'البريد الإلكتروني',
@@ -379,6 +462,42 @@ class _LoginViewState extends State<LoginView> {
                         ),
                         child: Text(
                           'تقديم طلب تسجيل',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: theme.colorScheme.primary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  // زر الانتقال لتسجيل عضو هيئة التدريس
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        'هل أنت عضو هيئة تدريس؟ ',
+                        style: TextStyle(
+                          color: theme.brightness == Brightness.light
+                              ? const Color(0xFF475569)
+                              : const Color(0xFF94A3B8),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () {
+                          Navigator.of(context).pushReplacement(
+                            MaterialPageRoute(
+                              builder: (_) => const FacultySignupView(),
+                            ),
+                          );
+                        },
+                        style: TextButton.styleFrom(
+                          padding: EdgeInsets.zero,
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        child: Text(
+                          'تسجيل كعضو هيئة تدريس',
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
                             color: theme.colorScheme.primary,

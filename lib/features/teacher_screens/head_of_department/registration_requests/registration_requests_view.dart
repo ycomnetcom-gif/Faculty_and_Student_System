@@ -9,10 +9,7 @@ class RegistrationRequestsView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => RegistrationRequestsViewModel(),
-      child: const _RegistrationRequestsViewBody(),
-    );
+    return const _RegistrationRequestsViewBody();
   }
 }
 
@@ -368,11 +365,13 @@ class __RegistrationRequestsViewBodyState extends State<_RegistrationRequestsVie
                   color: theme.colorScheme.onSurface.withOpacity(0.5),
                 ),
                 const SizedBox(width: 8),
-                Text(
-                  'تاريخ الطلب: ${_formatDate(request.createdAt)}',
-                  style: TextStyle(
-                    color: theme.colorScheme.onSurface.withOpacity(0.7),
-                    fontSize: 13,
+                Expanded(
+                  child: Text(
+                    'تاريخ الطلب: ${_formatDate(request.createdAt)}',
+                    style: TextStyle(
+                      color: theme.colorScheme.onSurface.withOpacity(0.7),
+                      fontSize: 13,
+                    ),
                   ),
                 ),
               ],
@@ -387,11 +386,13 @@ class __RegistrationRequestsViewBodyState extends State<_RegistrationRequestsVie
                     color: theme.colorScheme.onSurface.withOpacity(0.5),
                   ),
                   const SizedBox(width: 8),
-                  Text(
-                    'التخصص: ${request.stuInfo!['major'] ?? 'غير محدد'} | المستوى: ${request.stuInfo!['level'] ?? 'غير محدد'}',
-                    style: TextStyle(
-                      color: theme.colorScheme.onSurface.withOpacity(0.7),
-                      fontSize: 13,
+                  Expanded(
+                    child: Text(
+                      'التخصص: ${request.stuInfo!['major'] ?? 'غير محدد'} | المستوى: ${request.stuInfo!['level'] ?? 'غير محدد'}',
+                      style: TextStyle(
+                        color: theme.colorScheme.onSurface.withOpacity(0.7),
+                        fontSize: 13,
+                      ),
                     ),
                   ),
                 ],
@@ -405,11 +406,13 @@ class __RegistrationRequestsViewBodyState extends State<_RegistrationRequestsVie
                     color: theme.colorScheme.onSurface.withOpacity(0.5),
                   ),
                   const SizedBox(width: 8),
-                  Text(
-                    'المسار: ${request.stuInfo!['track'] ?? 'عام'}',
-                    style: TextStyle(
-                      color: theme.colorScheme.onSurface.withOpacity(0.7),
-                      fontSize: 13,
+                  Expanded(
+                    child: Text(
+                      'المسار: ${request.stuInfo!['track'] ?? 'عام'}',
+                      style: TextStyle(
+                        color: theme.colorScheme.onSurface.withOpacity(0.7),
+                        fontSize: 13,
+                      ),
                     ),
                   ),
                 ],

@@ -12,11 +12,34 @@ class RegistrationRequestsViewModel extends ChangeNotifier {
   String? _errorMessage;
   String? _successMessage;
   List<RegistrationRequestModel> _requests = [];
+  int? _pendingCount;
 
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
   String? get successMessage => _successMessage;
   List<RegistrationRequestModel> get requests => _requests;
+  int? get pendingCount => _pendingCount;
+
+  // جلب عدد الطلبات المعلقة فقط لتوفير استهلاك البيانات وقراءات الفايربيس
+  Future<void> fetchPendingCount() async {
+    _isLoading = true;
+    notifyListeners();
+    try {
+      final aggregateQuery = await _firestore
+          .collection('Registration_requests')
+          .where('state', isEqualTo: 'قيد المراجعة')
+          .count()
+          .get(source: AggregateSource.server)
+          .timeout(const Duration(seconds: 10));
+
+      _pendingCount = aggregateQuery.count;
+    } catch (e) {
+      debugPrint('Error fetching pending requests count: $e');
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
 
   // جلب الطلبات المعلقة يدوياً من السيرفر
   Future<void> fetchRequests() async {
@@ -34,6 +57,7 @@ class RegistrationRequestsViewModel extends ChangeNotifier {
       _requests = snapshot.docs
           .map((doc) => RegistrationRequestModel.fromMap(doc.data()))
           .toList();
+      _pendingCount = _requests.length;
 
       _isLoading = false;
       notifyListeners();
@@ -90,6 +114,9 @@ class RegistrationRequestsViewModel extends ChangeNotifier {
       });
 
       _requests.removeWhere((r) => r.id == request.id);
+      if (_pendingCount != null && _pendingCount! > 0) {
+        _pendingCount = _pendingCount! - 1;
+      }
       _successMessage = 'تم تفعيل الحساب وقبول طلب الطالب ${request.name} بنجاح';
       _isLoading = false;
       notifyListeners();
@@ -154,6 +181,9 @@ class RegistrationRequestsViewModel extends ChangeNotifier {
       });
 
       _requests.removeWhere((r) => r.id == request.id);
+      if (_pendingCount != null && _pendingCount! > 0) {
+        _pendingCount = _pendingCount! - 1;
+      }
       _successMessage = 'تم رفض طلب التسجيل الخاص بالطالب ${request.name}';
       _isLoading = false;
       notifyListeners();

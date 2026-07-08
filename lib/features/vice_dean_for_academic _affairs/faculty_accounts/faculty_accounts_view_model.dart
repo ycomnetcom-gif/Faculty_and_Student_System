@@ -1,90 +1,89 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:student_attendance_system/core/database_helper.dart';
 import 'package:student_attendance_system/core/sync_service.dart';
-import 'package:student_attendance_system/features/vice_dean_for_academic _affairs/head_accounts/head_account_model.dart';
+import 'package:student_attendance_system/features/vice_dean_for_academic _affairs/faculty_accounts/faculty_account_model.dart';
 
-class HeadAccountsViewModel extends ChangeNotifier {
-  List<HeadAccount> _accounts = [];
+class FacultyAccountsViewModel extends ChangeNotifier {
+  List<FacultyAccount> _accounts = [];
   bool _isLoading = false;
   bool _isSaving = false;
 
-  List<HeadAccount> get accounts => _accounts;
+  List<FacultyAccount> get accounts => _accounts;
   bool get isLoading => _isLoading;
   bool get isSaving => _isSaving;
 
-  // جلب الحسابات المخزنة محلياً لرؤساء الأقسام
+  // جلب الحسابات المخزنة محلياً لأعضاء هيئة التدريس
   Future<void> loadAccounts() async {
     _isLoading = true;
     notifyListeners();
 
     try {
-      final localUsers = await DatabaseHelper.instance.getUsersByRole('رئيس قسم');
-      _accounts = localUsers.map((map) => HeadAccount.fromMap(map)).toList();
+      final localUsers = await DatabaseHelper.instance.getAllFacultyAccounts();
+      _accounts = localUsers.map((map) => FacultyAccount.fromMap(map)).toList();
     } catch (e) {
-      debugPrint('Error loading head accounts: $e');
+      debugPrint('Error loading faculty accounts: $e');
     } finally {
       _isLoading = false;
       notifyListeners();
     }
   }
 
-  // إنشاء حساب جديد لرئيس القسم
-  Future<String?> createHeadAccount({
+  // إنشاء حساب جديد لعضو هيئة تدريس وحفظه محلياً وعلى الفايربيس
+  Future<String?> createFacultyAccount({
     required String name,
     required String email,
-    required String password,
   }) async {
     _isSaving = true;
     notifyListeners();
 
-    String? tempAppName;
-    FirebaseApp? tempApp;
-
     try {
-      // 1. التحقق من الاتصال بالإنترنت
+      // 1. التحقق مما إذا كان الحساب مسجلاً مسبقاً محلياً
+      final localUsers = await DatabaseHelper.instance.getAllFacultyAccounts();
+      final duplicateLocal = localUsers.any((u) => (u['email'] as String).trim().toLowerCase() == email.trim().toLowerCase());
+      if (duplicateLocal) {
+        return 'هذا البريد الإلكتروني مسجل بالفعل في القائمة.';
+      }
+
+      final String id = 'fac_${DateTime.now().millisecondsSinceEpoch}';
+      final String isoNow = DateTime.now().toIso8601String();
+
+      // 2. التحقق من الاتصال بالإنترنت
       final connectivityResult = await Connectivity().checkConnectivity();
       final hasConnection = connectivityResult.any((result) => result != ConnectivityResult.none);
 
       if (!hasConnection) {
-        return 'عذراً، يجب توفر اتصال بالإنترنت لإنشاء حساب رئيس قسم في نظام التحقق السحابي.';
+        // حفظ في جدول faculty_accounts محلياً مع وضع sync = 0
+        await DatabaseHelper.instance.saveFacultyAccount({
+          'id': id,
+          'name': name.trim(),
+          'email': email.trim().toLowerCase(),
+          'role': 'عضو هيئة تدريس',
+          'createAt': isoNow,
+          'acceptAt': isoNow,
+          'sync': 0,
+        });
+        await loadAccounts();
+        return null; // نجاح العملية محلياً
       }
 
-      // 2. إنشاء الحساب في Firebase Authentication باستخدام تطبيق مؤقت لتجنب تسجيل الخروج للحساب الحالي
-      tempAppName = 'temp_head_auth_${DateTime.now().millisecondsSinceEpoch}';
-      tempApp = await Firebase.initializeApp(
-        name: tempAppName,
-        options: Firebase.app().options,
-      );
-
-      final tempAuth = FirebaseAuth.instanceFor(app: tempApp);
-      final userCredential = await tempAuth.createUserWithEmailAndPassword(
-        email: email.trim(),
-        password: password,
-      );
-
-      final String newUid = userCredential.user!.uid;
-      final String isoNow = DateTime.now().toIso8601String();
-
-      // 3. حفظ بيانات المستخدم في Firestore
-      await FirebaseFirestore.instance.collection('users').doc(newUid).set({
-        'id': newUid,
+      // 3. حفظ بيانات المستخدم في Firestore كولكشن faculty_accounts مباشرة
+      await FirebaseFirestore.instance.collection('faculty_accounts').doc(id).set({
+        'id': id,
         'name': name.trim(),
-        'email': email.trim(),
-        'role': 'رئيس قسم',
+        'email': email.trim().toLowerCase(),
+        'role': 'عضو هيئة تدريس',
         'createdAt': FieldValue.serverTimestamp(),
         'acceptAt': FieldValue.serverTimestamp(),
       }).timeout(const Duration(seconds: 15));
 
-      // 4. حفظ البيانات محلياً في SQLite
-      await DatabaseHelper.instance.saveUser({
-        'id': newUid,
+      // 4. حفظ البيانات محلياً في SQLite بجدول faculty_accounts
+      await DatabaseHelper.instance.saveFacultyAccount({
+        'id': id,
         'name': name.trim(),
-        'email': email.trim(),
-        'role': 'رئيس قسم',
+        'email': email.trim().toLowerCase(),
+        'role': 'عضو هيئة تدريس',
         'createAt': isoNow,
         'acceptAt': isoNow,
         'sync': 1,
@@ -93,34 +92,17 @@ class HeadAccountsViewModel extends ChangeNotifier {
       // إعادة تحميل القائمة
       await loadAccounts();
       return null; // نجاح العملية
-    } on FirebaseAuthException catch (e) {
-      if (e.code == 'email-already-in-use') {
-        return 'هذا البريد الإلكتروني مستخدم بالفعل لحساب آخر.';
-      } else if (e.code == 'weak-password') {
-        return 'كلمة المرور ضعيفة جداً، يرجى كتابة 8 أحرف/أرقام على الأقل.';
-      } else if (e.code == 'invalid-email') {
-        return 'صيغة البريد الإلكتروني غير صحيحة.';
-      }
-      return 'خطأ في المصادقة: ${e.message}';
     } catch (e) {
-      debugPrint('Error creating head account: $e');
+      debugPrint('Error creating faculty account: $e');
       return 'حدث خطأ غير متوقع أثناء إنشاء الحساب: $e';
     } finally {
-      // تنظيف التطبيق المؤقت
-      if (tempApp != null) {
-        try {
-          await tempApp.delete();
-        } catch (e) {
-          debugPrint('Error deleting temp app: $e');
-        }
-      }
       _isSaving = false;
       notifyListeners();
     }
   }
 
-  // حذف حساب رئيس قسم
-  Future<String?> deleteHeadAccount(String id) async {
+  // حذف حساب عضو هيئة تدريس
+  Future<String?> deleteFacultyAccount(String id) async {
     _isLoading = true;
     notifyListeners();
 
@@ -130,24 +112,32 @@ class HeadAccountsViewModel extends ChangeNotifier {
       final hasConnection = connectivityResult.any((result) => result != ConnectivityResult.none);
 
       if (!hasConnection) {
+        // إذا كان الحساب غير مزامن، يمكن حذفه محلياً مباشرة
+        final db = await DatabaseHelper.instance.database;
+        final user = await db.query('faculty_accounts', where: 'id = ?', whereArgs: [id]);
+        if (user.isNotEmpty && user.first['sync'] == 0) {
+          await DatabaseHelper.instance.deleteFacultyAccount(id);
+          await loadAccounts();
+          return null;
+        }
         return 'عذراً، يجب توفر اتصال بالإنترنت لحذف الحساب من السيرفر السحابي لمنع تعارض البيانات.';
       }
 
-      // 2. حذف مستند المستخدم من Firestore
+      // 2. حذف مستند المستخدم من Firestore كولكشن faculty_accounts
       await FirebaseFirestore.instance
-          .collection('users')
+          .collection('faculty_accounts')
           .doc(id)
           .delete()
           .timeout(const Duration(seconds: 15));
 
-      // 3. حذف المستخدم من قاعدة البيانات المحلية SQLite
-      await DatabaseHelper.instance.deleteUser(id);
+      // 3. حذف المستخدم من قاعدة البيانات المحلية SQLite جدول faculty_accounts
+      await DatabaseHelper.instance.deleteFacultyAccount(id);
 
       // 4. تحديث القائمة المحلية
       await loadAccounts();
       return null; // نجاح العملية
     } catch (e) {
-      debugPrint('Error deleting head account: $e');
+      debugPrint('Error deleting faculty account: $e');
       return 'حدث خطأ أثناء محاولة حذف الحساب: $e';
     } finally {
       _isLoading = false;
@@ -156,7 +146,7 @@ class HeadAccountsViewModel extends ChangeNotifier {
   }
 
   // مزامنة الحسابات من Firestore للتحديث
-  Future<void> syncAccountsFromFirestore() async {
+  Future<bool> syncAccountsFromFirestore() async {
     _isLoading = true;
     notifyListeners();
 
@@ -166,17 +156,16 @@ class HeadAccountsViewModel extends ChangeNotifier {
     if (!hasConnection) {
       _isLoading = false;
       notifyListeners();
-      return;
+      return false;
     }
 
     try {
-      // 1. رفع أي تعديلات محلية معلقة (مثل مستخدمين مضافين sync = 0)
+      // 1. رفع أي تعديلات محلية معلقة
       await SyncService.instance.triggerSync();
 
       // 2. جلب وتحديث الحسابات من السيرفر
       final snapshot = await FirebaseFirestore.instance
-          .collection('users')
-          .where('role', isEqualTo: 'رئيس قسم')
+          .collection('faculty_accounts')
           .get()
           .timeout(const Duration(seconds: 10));
 
@@ -188,19 +177,21 @@ class HeadAccountsViewModel extends ChangeNotifier {
           createdAtStr = firestoreCreatedAt.toDate().toIso8601String();
         }
 
-        await DatabaseHelper.instance.saveUser({
+        await DatabaseHelper.instance.saveFacultyAccount({
           'id': doc.id,
           'name': data['name'] ?? '',
           'email': data['email'] ?? '',
-          'role': 'رئيس قسم',
+          'role': 'عضو هيئة تدريس',
           'createAt': createdAtStr ?? DateTime.now().toIso8601String(),
           'acceptAt': createdAtStr ?? DateTime.now().toIso8601String(),
           'sync': 1,
         });
       }
       await loadAccounts();
+      return true;
     } catch (e) {
-      debugPrint('Error syncing head accounts: $e');
+      debugPrint('Error syncing faculty accounts: $e');
+      return false;
     } finally {
       _isLoading = false;
       notifyListeners();

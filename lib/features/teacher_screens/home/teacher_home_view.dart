@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:student_attendance_system/features/login/login_view.dart';
 import 'package:student_attendance_system/core/sync_service.dart';
-import 'package:student_attendance_system/core/database_helper.dart';
 import 'package:student_attendance_system/features/teacher_screens/head_of_department/head_of_department_view.dart';
 import 'package:student_attendance_system/features/vice_dean_for_academic _affairs/vice_dean_academic_view.dart';
 import 'teacher_home_view_model.dart';
@@ -161,9 +160,9 @@ class _TeacherHomeViewState extends State<TeacherHomeView> {
 
     // 1. تحقق مما إذا كانت هناك بيانات غير متزامنة محلياً
     try {
-      final unsynced = await DatabaseHelper.instance.getUnsyncedUsers();
+      final hasUnsynced = await viewModel.hasUnsyncedData();
 
-      if (unsynced.isNotEmpty) {
+      if (hasUnsynced) {
         // إظهار تنبيه جاري المزامنة قبل الخروج
         messenger.showSnackBar(
           const SnackBar(
@@ -206,7 +205,7 @@ class _TeacherHomeViewState extends State<TeacherHomeView> {
           );
 
           if (forceSignOut != true) {
-            return; // إلغاء عملية تسجيل الخروج
+            return;
           }
         }
       }
@@ -409,12 +408,15 @@ class _TeacherHomeViewState extends State<TeacherHomeView> {
                     child: ClipOval(
                       child: Center(
                         child: Text(
-                          profile.name
-                              .split(' ')
-                              .where((s) => s.isNotEmpty)
-                              .take(2)
-                              .map((s) => s[0])
-                              .join(''),
+                          profile.name.trim().isEmpty
+                              ? 'أ'
+                              : profile.name
+                                  .trim()
+                                  .split(' ')
+                                  .where((s) => s.isNotEmpty)
+                                  .take(2)
+                                  .map((s) => s[0])
+                                  .join(''),
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 22,
@@ -726,8 +728,9 @@ class _TeacherHomeViewState extends State<TeacherHomeView> {
                 ),
                 child: Center(
                   child: Text(
-                    profile != null
+                    profile != null && profile.name.trim().isNotEmpty
                         ? profile.name
+                              .trim()
                               .split(' ')
                               .where((s) => s.isNotEmpty)
                               .take(2)

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
@@ -27,9 +28,11 @@ class SyncService {
     int totalSynced = 0;
 
     try {
-      totalSynced += await _syncUsers();
+      totalSynced += await _syncFacultyUsers();
+      totalSynced += await _syncFacultyAccounts();
       totalSynced += await _syncDepartments();
       totalSynced += await _syncDeletedDepartments();
+      totalSynced += await _syncCourseAssignments();
     } catch (e) {
       debugPrint('Sync execution failed: $e');
       rethrow;
@@ -40,35 +43,38 @@ class SyncService {
     return totalSynced;
   }
 
-  // مزامنة جدول المستخدمين (users) وتُرجع عدد السجلات المزامنة
-  Future<int> _syncUsers() async {
-    final unsyncedUsers = await DatabaseHelper.instance.getUnsyncedUsers();
-    if (unsyncedUsers.isEmpty) return 0;
+  // مزامنة جدول حسابات أعضاء هيئة التدريس (faculty_accounts)
+  Future<int> _syncFacultyAccounts() async {
+    final unsyncedFaculty = await DatabaseHelper.instance.getUnsyncedFacultyAccounts();
+    if (unsyncedFaculty.isEmpty) return 0;
 
-    debugPrint('Found ${unsyncedUsers.length} unsynced users. Starting sync...');
+    debugPrint('Found ${unsyncedFaculty.length} unsynced faculty accounts. Starting sync...');
     final firestore = FirebaseFirestore.instance;
     int syncedCount = 0;
 
-    for (final userMap in unsyncedUsers) {
+    for (final userMap in unsyncedFaculty) {
       final String id = userMap['id'];
+      final String name = userMap['name'] ?? '';
+      final String email = userMap['email'] ?? '';
+      final String role = userMap['role'] ?? '';
+      final String? createAt = userMap['createAt'];
+      final String? acceptAt = userMap['acceptAt'];
+
       try {
-        // رفع المستند إلى كولكشن users في Firestore
-        await firestore.collection('users').doc(id).set({
-          'id': userMap['id'],
-          'name': userMap['name'],
-          'email': userMap['email'],
-          'role': userMap['role'],
-          'createAt': userMap['createAt'],
-          'acceptAt': userMap['acceptAt'],
-          'department': userMap['department'],
+        await firestore.collection('faculty_accounts').doc(id).set({
+          'id': id,
+          'name': name,
+          'email': email,
+          'role': role,
+          'createdAt': createAt != null ? Timestamp.fromDate(DateTime.parse(createAt)) : FieldValue.serverTimestamp(),
+          'acceptAt': acceptAt != null ? Timestamp.fromDate(DateTime.parse(acceptAt)) : FieldValue.serverTimestamp(),
         });
 
-        // تحديث حالة المزامنة في SQLite محلياً إلى 1 (تمت المزامنة)
-        await DatabaseHelper.instance.updateSyncStatus(id, 1);
+        await DatabaseHelper.instance.updateFacultyAccountSyncStatus(id, 1);
         syncedCount++;
-        debugPrint('User with ID $id synced successfully.');
+        debugPrint('Faculty account with ID $id synced successfully.');
       } catch (e) {
-        debugPrint('Failed to sync user with ID $id: $e');
+        debugPrint('Failed to sync faculty account with ID $id: $e');
       }
     }
 
@@ -163,5 +169,224 @@ class SyncService {
     }
 
     return syncedCount;
+  }
+
+  // مزامنة مستخدمي أعضاء هيئة التدريس المسجلين (faculty_users)
+  Future<int> _syncFacultyUsers() async {
+    final unsyncedUsers = await DatabaseHelper.instance.getUnsyncedFacultyUsers();
+    if (unsyncedUsers.isEmpty) return 0;
+
+    debugPrint('Found ${unsyncedUsers.length} unsynced faculty users. Starting sync...');
+    final firestore = FirebaseFirestore.instance;
+    int syncedCount = 0;
+
+    for (final userMap in unsyncedUsers) {
+      final String id = userMap['id'];
+      final String name = userMap['name'] ?? '';
+      final String email = userMap['email'] ?? '';
+      final String role = userMap['role'] ?? '';
+      final String? createAt = userMap['createAt'];
+      final String? acceptAt = userMap['acceptAt'];
+      final String? department = userMap['department'];
+
+      try {
+        await firestore.collection('faculty_users').doc(id).set({
+          'id': id,
+          'name': name,
+          'email': email,
+          'role': role,
+          'createAt': createAt,
+          'acceptAt': acceptAt,
+          'department': department,
+        });
+
+        await DatabaseHelper.instance.updateFacultyUserSyncStatus(id, 1);
+        syncedCount++;
+        debugPrint('Faculty user with ID $id synced successfully.');
+      } catch (e) {
+        debugPrint('Failed to sync faculty user with ID $id: $e');
+      }
+    }
+
+    return syncedCount;
+  }
+  // مزامنة تعيينات المواد الدراسية مع Firestore
+  Future<int> _syncCourseAssignments() async {
+    final unsynced = await DatabaseHelper.instance.getUnsyncedCourseAssignments();
+    if (unsynced.isEmpty) return 0;
+
+    debugPrint('Found ${unsynced.length} unsynced course assignments. Starting sync...');
+    final firestore = FirebaseFirestore.instance;
+    int syncedCount = 0;
+
+    for (final row in unsynced) {
+      final String id = row['id'] as String;
+      try {
+        // تحويل student_groups من نص JSON إلى قائمة للحفظ في Firestore
+        final dynamic rawGroups = row['student_groups'];
+        List<String> groups = [];
+        if (rawGroups is String && rawGroups.isNotEmpty) {
+          try {
+            final decoded = jsonDecode(rawGroups);
+            if (decoded is List) {
+              groups = decoded.cast<String>();
+            }
+          } catch (_) {
+            groups = [];
+          }
+        }
+
+        await firestore.collection('course_assignments').doc(id).set({
+          'id': id,
+          'subject_name': row['subject_name'] ?? '',
+          'teacher_uid': row['teacher_uid'] ?? '',
+          'student_groups': groups,
+          'room': row['room'] ?? '',
+          'created_at': FieldValue.serverTimestamp(),
+        });
+
+        await DatabaseHelper.instance.updateCourseAssignmentSyncStatus(id, 1);
+        syncedCount++;
+        debugPrint('Course assignment $id synced successfully.');
+      } catch (e) {
+        debugPrint('Failed to sync course assignment $id: $e');
+      }
+    }
+
+    return syncedCount;
+  }
+
+  // جلب كل التحديثات من السيرفر وتخزينها في قاعدة البيانات المحلية (SQL)
+  Future<void> pullUpdatesFromServer() async {
+    final results = await Connectivity().checkConnectivity();
+    final hasConnection = results.any((result) => result != ConnectivityResult.none);
+    if (!hasConnection) {
+      throw Exception('no_internet');
+    }
+
+    final firestore = FirebaseFirestore.instance;
+
+    // 1. مزامنة faculty_users (أعضاء هيئة التدريس المسجلين)
+    try {
+      final snapshot = await firestore.collection('faculty_users').get().timeout(const Duration(seconds: 15));
+      for (final doc in snapshot.docs) {
+        try {
+          final data = doc.data();
+          await DatabaseHelper.instance.saveFacultyUser({
+            'id': doc.id,
+            'name': data['name'] ?? '',
+            'email': data['email'] ?? '',
+            'role': data['role'] ?? 'عضو هيئة تدريس',
+            'department': data['department'],
+            'sync': 1,
+          });
+        } catch (e) {
+          debugPrint('Error saving faculty user ${doc.id}: $e');
+        }
+      }
+    } catch (e) {
+      debugPrint('Error pulling faculty_users: $e');
+    }
+
+    // 2. مزامنة faculty_accounts (الحسابات المصرح لها)
+    try {
+      final snapshot = await firestore.collection('faculty_accounts').get().timeout(const Duration(seconds: 10));
+      for (final doc in snapshot.docs) {
+        final data = doc.data();
+        await DatabaseHelper.instance.saveFacultyAccount({
+          'id': doc.id,
+          'name': data['name'] ?? '',
+          'email': data['email'] ?? '',
+          'role': data['role'] ?? 'عضو هيئة تدريس',
+          'createAt': data['createdAt'] is Timestamp 
+              ? (data['createdAt'] as Timestamp).toDate().toIso8601String() 
+              : data['createdAt']?.toString(),
+          'acceptAt': data['acceptAt'] is Timestamp 
+              ? (data['acceptAt'] as Timestamp).toDate().toIso8601String() 
+              : data['acceptAt']?.toString(),
+          'sync': 1,
+        });
+      }
+    } catch (e) {
+      debugPrint('Error pulling faculty_accounts: $e');
+    }
+
+    // 3. مزامنة departments (الأقسام)
+    try {
+      final snapshot = await firestore.collection('departments').get().timeout(const Duration(seconds: 10));
+      final db = await DatabaseHelper.instance.database;
+      for (final doc in snapshot.docs) {
+        final data = doc.data();
+        final String firestoreId = doc.id;
+        final String name = data['name'] ?? '';
+        final String headId = data['head_id'] ?? '';
+        final String headName = data['head_name'] ?? '';
+        final String? createdAt = data['createdAt'] is Timestamp 
+            ? (data['createdAt'] as Timestamp).toDate().toIso8601String() 
+            : data['createdAt']?.toString();
+
+        final existing = await db.query(
+          'departments',
+          where: 'firestore_id = ?',
+          whereArgs: [firestoreId],
+        );
+
+        if (existing.isNotEmpty) {
+          final int localId = existing.first['id'] as int;
+          await DatabaseHelper.instance.updateDepartment(
+            localId,
+            name,
+            headId,
+            headName,
+            sync: 1,
+            firestoreId: firestoreId,
+          );
+        } else {
+          await DatabaseHelper.instance.insertDepartment(
+            name,
+            headId,
+            headName,
+            sync: 1,
+            firestoreId: firestoreId,
+            createdAt: createdAt,
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('Error pulling departments: $e');
+    }
+
+    // 4. مزامنة course_assignments (تعيينات المواد)
+    try {
+      final snapshot = await firestore.collection('course_assignments').get().timeout(const Duration(seconds: 10));
+      for (final doc in snapshot.docs) {
+        final data = doc.data();
+        final String id = doc.id;
+        final String subjectName = data['subject_name'] ?? '';
+        final String teacherUid = data['teacher_uid'] ?? '';
+        final String room = data['room'] ?? '';
+        final List<dynamic> groupsList = data['student_groups'] ?? [];
+        final String studentGroupsJson = jsonEncode(groupsList.map((g) => g.toString()).toList());
+
+        await DatabaseHelper.instance.saveCourseAssignment({
+          'id': id,
+          'subject_name': subjectName,
+          'teacher_uid': teacherUid,
+          'student_groups': studentGroupsJson,
+          'room': room,
+          'sync_status': 1,
+        });
+      }
+    } catch (e) {
+      debugPrint('Error pulling course_assignments: $e');
+    }
+  }
+
+  // مزامنة ثنائية الاتجاه (رفع وتنزيل)
+  Future<void> syncBidirectional() async {
+    // رفع
+    await triggerSync();
+    // تنزيل
+    await pullUpdatesFromServer();
   }
 }

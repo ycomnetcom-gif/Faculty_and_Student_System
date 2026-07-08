@@ -65,17 +65,21 @@ class DepartmentsViewModel extends ChangeNotifier {
       final localDepts = await DatabaseHelper.instance.getAllDepartments();
       _departments = localDepts.map((d) => Department.fromMap(d)).toList();
 
-      // 2. تحميل المستخدمين من SQLite مباشرة
+      // 2. تحميل أعضاء هيئة التدريس المسجلين من SQLite (جدول faculty_users) فقط
       final db = await DatabaseHelper.instance.database;
-      final localUsers = await db.query('users', where: "role != 'طالب'");
-      _users = localUsers.map((u) {
-        return AppUser(
-          id: u['id']?.toString() ?? '',
-          name: u['name']?.toString() ?? 'غير معروف',
-          email: u['email']?.toString() ?? '',
-          role: u['role']?.toString() ?? 'مدرس',
-        );
-      }).toList();
+      final localFacultyUsers = await db.query('faculty_users');
+
+      final List<AppUser> list = [];
+      for (final fUser in localFacultyUsers) {
+        list.add(AppUser(
+          id: fUser['id']?.toString() ?? '',
+          name: fUser['name']?.toString() ?? 'غير معروف',
+          email: fUser['email']?.toString() ?? '',
+          role: fUser['role']?.toString() ?? 'عضو هيئة تدريس',
+        ));
+      }
+
+      _users = list;
     } catch (e) {
       debugPrint('Error loading data: $e');
     } finally {
@@ -111,9 +115,9 @@ class DepartmentsViewModel extends ChangeNotifier {
             'createdAt': FieldValue.serverTimestamp(),
           }).timeout(const Duration(seconds: 10));
 
-          // تحديث دور رئيس القسم الجديد وقسمه في Firestore
+          // تحديث دور رئيس القسم الجديد وقسمه في Firestore (faculty_users دائماً)
           try {
-            await FirebaseFirestore.instance.collection('users').doc(headId).update({
+            await FirebaseFirestore.instance.collection('faculty_users').doc(headId).update({
               'role': 'رئيس قسم',
               'department': deptName,
             }).timeout(const Duration(seconds: 5));
@@ -129,7 +133,6 @@ class DepartmentsViewModel extends ChangeNotifier {
         } else {
           // حفظ القسم محلياً
           await DatabaseHelper.instance.insertDepartment(deptName, headId, headName, sync: 0, createdAt: isoNow);
-          // تحديث دور المستخدم وقسمه محلياً
           await DatabaseHelper.instance.updateUserRoleAndDepartment(headId, 'رئيس قسم', deptName, sync: 0);
           await loadData();
           return 'add_success_offline';
@@ -151,9 +154,9 @@ class DepartmentsViewModel extends ChangeNotifier {
           }, SetOptions(merge: true)).timeout(const Duration(seconds: 10));
 
           if (headChanged) {
-            // 1. إرجاع دور رئيس القسم القديم إلى عضو هيئة تدريس وإزالة القسم
+            // 1. إرجاع دور رئيس القسم القديم إلى عضو هيئة تدريس
             try {
-              await FirebaseFirestore.instance.collection('users').doc(oldHeadId).update({
+              await FirebaseFirestore.instance.collection('faculty_users').doc(oldHeadId).update({
                 'role': 'عضو هيئة تدريس',
                 'department': null,
               }).timeout(const Duration(seconds: 5));
@@ -162,9 +165,9 @@ class DepartmentsViewModel extends ChangeNotifier {
               await DatabaseHelper.instance.updateUserRoleAndDepartment(oldHeadId, 'عضو هيئة تدريس', null, sync: 0);
             }
 
-            // 2. تعيين دور رئيس القسم الجديد وقسمه
+            // 2. تعيين دور رئيس القسم الجديد
             try {
-              await FirebaseFirestore.instance.collection('users').doc(headId).update({
+              await FirebaseFirestore.instance.collection('faculty_users').doc(headId).update({
                 'role': 'رئيس قسم',
                 'department': deptName,
               }).timeout(const Duration(seconds: 5));
@@ -173,9 +176,9 @@ class DepartmentsViewModel extends ChangeNotifier {
               await DatabaseHelper.instance.updateUserRoleAndDepartment(headId, 'رئيس قسم', deptName, sync: 0);
             }
           } else {
-            // تحديث اسم القسم لرئيس القسم الحالي في حال تم تغيير اسم القسم فقط
+            // تحديث اسم القسم لرئيس القسم الحالي فقط
             try {
-              await FirebaseFirestore.instance.collection('users').doc(headId).update({
+              await FirebaseFirestore.instance.collection('faculty_users').doc(headId).update({
                 'department': deptName,
               }).timeout(const Duration(seconds: 5));
               await DatabaseHelper.instance.updateUserRoleAndDepartment(headId, 'رئيس قسم', deptName, sync: 1);
@@ -189,7 +192,7 @@ class DepartmentsViewModel extends ChangeNotifier {
           await loadData();
           return 'edit_success_online';
         } else {
-          // حفظ التعديل محلياً مع جعل حالة المزامنة = 0 ليتم رفعها لاحقاً
+          // حفظ التعديل محلياً
           await DatabaseHelper.instance.updateDepartment(localId, deptName, headId, headName, sync: 0, firestoreId: fId);
 
           if (headChanged) {
@@ -206,7 +209,6 @@ class DepartmentsViewModel extends ChangeNotifier {
       }
     } catch (e) {
       debugPrint('Error saving department: $e');
-      // معالجة استثنائية عند حدوث خطأ
       if (_editingDepartment != null) {
         try {
           final oldHeadId = _editingDepartment!.headId;
@@ -266,21 +268,21 @@ class DepartmentsViewModel extends ChangeNotifier {
       // 1. رفع البيانات المحلية غير المزامنة
       await SyncService.instance.triggerSync();
 
-      // 2. تنزيل وتحديث المستخدمين من الفايربيس وتخزينهم في SQLite
-      final usersSnapshot = await FirebaseFirestore.instance
-          .collection('users')
-          .where('role', isNotEqualTo: 'طالب')
+      // 2. تنزيل وتحديث أعضاء هيئة التدريس المسجلين من كولكشن faculty_users وتخزينهم في SQLite
+      final facultyUsersSnapshot = await FirebaseFirestore.instance
+          .collection('faculty_users')
           .get()
           .timeout(const Duration(seconds: 10));
 
-      for (final doc in usersSnapshot.docs) {
+      for (final doc in facultyUsersSnapshot.docs) {
         final data = doc.data();
-        await DatabaseHelper.instance.saveUser({
+        await DatabaseHelper.instance.saveFacultyUser({
           'id': doc.id,
           'name': data['name'] ?? '',
           'email': data['email'] ?? '',
-          'role': data['role'] ?? '',
+          'role': data['role'] ?? 'عضو هيئة تدريس',
           'department': data['department'],
+          'sync': 1,
         });
       }
 
@@ -356,10 +358,10 @@ class DepartmentsViewModel extends ChangeNotifier {
             .delete()
             .timeout(const Duration(seconds: 10));
 
-        // 2. إرجاع دور رئيس القسم في Firestore إلى عضو هيئة تدريس وإزالة القسم
+        // 2. إرجاع دور رئيس القسم في faculty_users إلى عضو هيئة تدريس
         if (headId.isNotEmpty) {
           try {
-            await FirebaseFirestore.instance.collection('users').doc(headId).update({
+            await FirebaseFirestore.instance.collection('faculty_users').doc(headId).update({
               'role': 'عضو هيئة تدريس',
               'department': null,
             }).timeout(const Duration(seconds: 5));
