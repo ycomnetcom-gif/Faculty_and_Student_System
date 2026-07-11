@@ -1,7 +1,7 @@
 import 'dart:convert';
-import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter/foundation.dart';
 import 'package:student_attendance_system/core/database_helper.dart';
 import 'package:student_attendance_system/core/sync_service.dart';
 
@@ -41,7 +41,15 @@ class ViewAssignmentsViewModel extends ChangeNotifier {
   bool _isSuccess = true;
   bool get isSuccess => _isSuccess;
 
-  /// تحميل جميع التعيينات والجداول مع أسماء المعلمين المقابلة
+  final _firestore = FirebaseFirestore.instance;
+
+  // -- دالة مساعدة: هل يتوفر اتصال بالإنترنت؟ --
+  Future<bool> _hasInternet() async {
+    final results = await Connectivity().checkConnectivity();
+    return results.any((r) => r != ConnectivityResult.none);
+  }
+
+  /// تحميل جميع التعيينات مع أسماء المعلمين (من SQLite فقط، بدون فايربيس)
   Future<void> loadAssignments() async {
     _isLoading = true;
     _message = null;
@@ -49,20 +57,22 @@ class ViewAssignmentsViewModel extends ChangeNotifier {
 
     try {
       final db = await DatabaseHelper.instance.database;
-      
-      // جلب المعلمين المسجلين أولاً لاستخدامهم في التعديل
+
+      // جلب قائمة المعلمين لاستخدامها في نافذة التعديل
       _teachers = await db.query(
         'faculty_users',
         columns: ['id', 'name', 'email', 'role'],
         orderBy: 'name ASC',
       );
 
+      // جلب التعيينات مع اسم المعلم (استبعاد المحذوفة sync_status=2)
       final List<Map<String, dynamic>> rows = await db.rawQuery('''
-        SELECT ca.id, ca.subject_name, ca.student_groups, ca.room, ca.sync_status, ca.teacher_uid, 
-               COALESCE(u.name, fu.name, 'معلم غير معروف') as teacher_name
+        SELECT ca.id, ca.subject_name, ca.student_groups, ca.room, ca.sync_status, ca.teacher_uid,
+               COALESCE(fu.name, u.name, 'معلم غير معروف') as teacher_name
         FROM course_assignments ca
-        LEFT JOIN users u ON ca.teacher_uid = u.id
         LEFT JOIN faculty_users fu ON ca.teacher_uid = fu.id
+        LEFT JOIN users u ON ca.teacher_uid = u.id
+        WHERE ca.sync_status != 2
         ORDER BY ca.subject_name ASC
       ''');
 
@@ -72,12 +82,9 @@ class ViewAssignmentsViewModel extends ChangeNotifier {
         if (rawGroups is String && rawGroups.isNotEmpty) {
           try {
             final decoded = jsonDecode(rawGroups);
-            if (decoded is List) {
-              groups = decoded.cast<String>();
-            }
+            if (decoded is List) groups = decoded.cast<String>();
           } catch (_) {}
         }
-
         return AssignedCourse(
           id: row['id'] as String? ?? '',
           subjectName: row['subject_name'] as String? ?? '',
@@ -93,14 +100,17 @@ class ViewAssignmentsViewModel extends ChangeNotifier {
     } catch (e) {
       _message = 'فشل في تحميل التعيينات: $e';
       _isSuccess = false;
-      debugPrint('ViewAssignmentsVM Error: $e');
+      debugPrint('ViewAssignmentsVM loadAssignments Error: $e');
     } finally {
       _isLoading = false;
       notifyListeners();
     }
   }
 
-  /// تحديث بيانات تعيين مادة دراسية
+  /// تعديل تعيين مادة:
+  /// - يحدث محلياً فوراً دائماً.
+  /// - إذا توفر الإنترنت: يرفع التغيير مباشرة لفايربيس ويضع sync_status=1.
+  /// - إذا لم يتوفر: يضع sync_status=0 وتتولى autoSync الرفع لاحقاً.
   Future<void> updateAssignment({
     required String id,
     required String subjectName,
@@ -113,33 +123,59 @@ class ViewAssignmentsViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
+      final groupsJson = jsonEncode(studentGroups.map((g) => g.trim()).toList());
       final db = await DatabaseHelper.instance.database;
-      await db.update(
-        'course_assignments',
-        {
+
+      if (await _hasInternet()) {
+        // 1. رفع مباشر إلى فايربيس
+        await _firestore.collection('course_assignments').doc(id).set({
+          'id': id,
           'subject_name': subjectName.trim(),
           'teacher_uid': teacherUid,
           'room': room.trim(),
-          'student_groups': jsonEncode(studentGroups.map((g) => g.trim()).toList()),
-          'sync_status': 0, // إعادة تعيين حالة المزامنة ليتم رفع التعديل
-        },
-        where: 'id = ?',
-        whereArgs: [id],
-      );
+          'student_groups': studentGroups.map((g) => g.trim()).toList(),
+          'updated_at': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
 
-      _message = 'تم تحديث التعيين بنجاح وجارٍ مزامنته...';
+        // 2. تحديث محلي مع sync_status=1 (تم الرفع)
+        await db.update(
+          'course_assignments',
+          {
+            'subject_name': subjectName.trim(),
+            'teacher_uid': teacherUid,
+            'room': room.trim(),
+            'student_groups': groupsJson,
+            'sync_status': 1,
+          },
+          where: 'id = ?',
+          whereArgs: [id],
+        );
+
+        _message = 'تم تحديث التعيين وحفظه على السيرفر بنجاح ✓';
+      } else {
+        // لا إنترنت: حفظ محلي فقط مع sync_status=0 للمزامنة لاحقاً
+        await db.update(
+          'course_assignments',
+          {
+            'subject_name': subjectName.trim(),
+            'teacher_uid': teacherUid,
+            'room': room.trim(),
+            'student_groups': groupsJson,
+            'sync_status': 0,
+          },
+          where: 'id = ?',
+          whereArgs: [id],
+        );
+
+        _message = 'تم التعديل محلياً. سيتم الرفع تلقائياً عند توفر الإنترنت.';
+      }
+
       _isSuccess = true;
-
-      // بدء المزامنة فوراً في الخلفية
-      SyncService.instance.triggerSync().catchError((e) {
-        debugPrint('Sync after update failed: $e');
-        return 0;
-      });
-
       await loadAssignments();
     } catch (e) {
-      _message = 'فشل في تحديث البيانات: $e';
+      _message = 'فشل في التعديل: $e';
       _isSuccess = false;
+      debugPrint('ViewAssignmentsVM updateAssignment Error: $e');
       notifyListeners();
     } finally {
       _isLoading = false;
@@ -147,66 +183,76 @@ class ViewAssignmentsViewModel extends ChangeNotifier {
     }
   }
 
-  /// حذف تعيين مادة معين
+  /// حذف تعيين مادة:
+  /// - يخفيه من الواجهة فوراً.
+  /// - إذا توفر الإنترنت: يحذفه مباشرة من فايربيس ونهائياً من SQLite.
+  /// - إذا لم يتوفر: يضع sync_status=2 وتتولى autoSync الحذف من فايربيس لاحقاً.
   Future<void> deleteAssignment(String id) async {
+    // إخفاء من الواجهة فوراً
+    _assignments.removeWhere((item) => item.id == id);
+    notifyListeners();
+
     try {
-      await DatabaseHelper.instance.deleteCourseAssignment(id);
-      _assignments.removeWhere((item) => item.id == id);
-      _message = 'تم حذف التعيين محلياً بنجاح.';
+      if (await _hasInternet()) {
+        // حذف مباشر من فايربيس
+        await _firestore.collection('course_assignments').doc(id).delete();
+
+        // حذف نهائي من SQLite
+        await DatabaseHelper.instance.deleteCourseAssignmentFully(id);
+
+        _message = 'تم حذف التعيين من السيرفر والقاعدة المحلية بنجاح ✓';
+      } else {
+        // لا إنترنت: تعليم بالحذف المعلق (sync_status=2)
+        await DatabaseHelper.instance.deleteCourseAssignment(id);
+
+        _message = 'تم الحذف محلياً. سيتم الحذف من السيرفر تلقائياً عند توفر الإنترنت.';
+      }
+
       _isSuccess = true;
       notifyListeners();
     } catch (e) {
-      _message = 'فشل في حذف التعيين: $e';
+      _message = 'فشل في الحذف: $e';
       _isSuccess = false;
+      debugPrint('ViewAssignmentsVM deleteAssignment Error: $e');
       notifyListeners();
     }
   }
 
-  /// مزامنة مستخدمي هيئة التدريس يدوياً من Firestore
+  /// مزامنة يدوية (زر المزامنة): رفع المعلق + تنزيل التحديثات
   Future<void> syncNow() async {
     _isLoading = true;
     _message = null;
     notifyListeners();
 
     try {
-      final results = await Connectivity().checkConnectivity();
-      final hasConnection = results.any((result) => result != ConnectivityResult.none);
-
-      if (!hasConnection) {
+      if (!await _hasInternet()) {
         _message = 'لا يوجد اتصال بالإنترنت حالياً.';
         _isSuccess = false;
         return;
       }
 
-      // تنزيل وتحديث أعضاء هيئة التدريس المسجلين من كولكشن faculty_users وتخزينهم في SQLite
-      final facultyUsersSnapshot = await FirebaseFirestore.instance
-          .collection('faculty_users')
-          .get()
-          .timeout(const Duration(seconds: 10));
-
-      int updatedCount = 0;
-      for (final doc in facultyUsersSnapshot.docs) {
-        final data = doc.data();
-        await DatabaseHelper.instance.saveFacultyUser({
-          'id': doc.id,
-          'name': data['name'] ?? '',
-          'email': data['email'] ?? '',
-          'role': data['role'] ?? 'عضو هيئة تدريس',
-          'department': data['department'],
-          'sync': 1,
-        });
-        updatedCount++;
-      }
-
-      _message = 'تمت مزامنة أعضاء هيئة التدريس بنجاح. تم تحديث $updatedCount معلم.';
+      await SyncService.instance.syncBidirectional();
+      _message = 'تمت المزامنة الكاملة مع السيرفر بنجاح ✓';
       _isSuccess = true;
-      await loadAssignments(); // إعادة تحميل لتحديث القائمة المحلية والأسماء
+      await loadAssignments();
     } catch (e) {
       _message = 'فشلت المزامنة: $e';
       _isSuccess = false;
     } finally {
       _isLoading = false;
       notifyListeners();
+    }
+  }
+
+  /// مزامنة تلقائية صامتة عند عودة الإنترنت
+  Future<void> autoSync() async {
+    try {
+      if (await _hasInternet()) {
+        await SyncService.instance.syncBidirectional();
+        await loadAssignments();
+      }
+    } catch (e) {
+      debugPrint('ViewAssignmentsVM autoSync Error: $e');
     }
   }
 

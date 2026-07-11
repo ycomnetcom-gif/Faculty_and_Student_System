@@ -1,8 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import 'package:student_attendance_system/core/theme.dart';
-import 'package:student_attendance_system/features/teacher_screens/head_of_department/registration_requests/registration_requests_view_model.dart';
-import 'registration_requests/registration_requests_view.dart';
+import 'configure_student_accounts/configure_student_accounts_view.dart';
 
 class HeadOfDepartmentView extends StatefulWidget {
   const HeadOfDepartmentView({super.key});
@@ -13,20 +10,9 @@ class HeadOfDepartmentView extends StatefulWidget {
 
 class _HeadOfDepartmentViewState extends State<HeadOfDepartmentView> {
   @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      Provider.of<RegistrationRequestsViewModel>(context, listen: false).fetchPendingCount();
-    });
-  }
-
-  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final requestsViewModel = Provider.of<RegistrationRequestsViewModel>(context);
-    final pendingCount = requestsViewModel.pendingCount;
-    final isLoading = requestsViewModel.isLoading;
 
     return Scaffold(
       appBar: AppBar(
@@ -34,26 +20,6 @@ class _HeadOfDepartmentViewState extends State<HeadOfDepartmentView> {
         elevation: 0,
         backgroundColor: Colors.transparent,
         foregroundColor: theme.colorScheme.onSurface,
-        actions: [
-          isLoading
-              ? const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 16),
-                  child: Center(
-                    child: SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                      ),
-                    ),
-                  ),
-                )
-              : IconButton(
-                  icon: const Icon(Icons.sync_rounded),
-                  tooltip: 'مزامنة البيانات',
-                  onPressed: () => requestsViewModel.fetchPendingCount(),
-                ),
-        ],
       ),
       extendBodyBehindAppBar: true,
       body: Container(
@@ -76,153 +42,131 @@ class _HeadOfDepartmentViewState extends State<HeadOfDepartmentView> {
           ),
         ),
         child: SafeArea(
-          child: RefreshIndicator(
-            onRefresh: () => requestsViewModel.fetchPendingCount(),
-            child: SingleChildScrollView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // رأس الصفحة الترحيبي
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.primary.withOpacity(0.1),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          Icons.admin_panel_settings_rounded,
-                          size: 32,
-                          color: theme.colorScheme.primary,
-                        ),
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // رأس الصفحة الترحيبي
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.primary.withOpacity(0.1),
+                        shape: BoxShape.circle,
                       ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'لوحة إدارة القسم',
-                              style: theme.textTheme.titleLarge?.copyWith(
-                                fontWeight: FontWeight.bold,
-                                color: theme.colorScheme.onSurface,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'متابعة وإدارة الصلاحيات والمقررات الدراسية',
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                color: theme.colorScheme.onSurface.withOpacity(0.6),
-                              ),
-                            ),
-                          ],
-                        ),
+                      child: Icon(
+                        Icons.admin_panel_settings_rounded,
+                        size: 32,
+                        color: theme.colorScheme.primary,
                       ),
-                    ],
-                  ),
-                  const SizedBox(height: 32),
-
-                  // عنوان القسم المهام
-                  Text(
-                    'المهام الإدارية والرقابية',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: theme.colorScheme.onSurface,
                     ),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // 1. زر مراجعة طلبات التسجيل (مهمة عريضة)
-                  _buildTaskCard(
-                    context: context,
-                    title: 'مراجعة طلبات التسجيل',
-                    subtitle: 'اعتماد أو رفض طلبات إنشاء حسابات الطلاب الجدد',
-                    icon: Icons.people_outline_rounded,
-                    gradientColors: [
-                      const Color(0xFF3B82F6),
-                      const Color(0xFF1D4ED8),
-                    ],
-                    trailingWidget: pendingCount != null && pendingCount > 0
-                        ? Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: AppTheme.errorColor,
-                              borderRadius: BorderRadius.circular(12),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'لوحة إدارة القسم',
+                            style: theme.textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              color: theme.colorScheme.onSurface,
                             ),
-                            child: Text(
-                              '$pendingCount طلب معلق',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          )
-                        : const Icon(
-                            Icons.arrow_forward_ios_rounded,
-                            color: Colors.white70,
-                            size: 18,
                           ),
-                    onTap: () async {
-                      await Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => const RegistrationRequestsView(),
-                        ),
-                      );
-                      if (mounted) {
-                        Provider.of<RegistrationRequestsViewModel>(context, listen: false).fetchPendingCount();
-                      }
-                    },
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // 2. إحصائيات وتقارير القسم (مهمة عريضة)
-                  _buildTaskCard(
-                    context: context,
-                    title: 'تقارير الحضور والغياب',
-                    subtitle: 'متابعة نسب حضور الطلاب الإجمالية في جميع المقررات',
-                    icon: Icons.insert_chart_outlined_rounded,
-                    gradientColors: [
-                      const Color(0xFF10B981),
-                      const Color(0xFF047857),
-                    ],
-                    trailingWidget: const Icon(
-                      Icons.arrow_forward_ios_rounded,
-                      color: Colors.white70,
-                      size: 18,
+                          const SizedBox(height: 4),
+                          Text(
+                            'متابعة وإدارة الصلاحيات والمقررات الدراسية',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: theme.colorScheme.onSurface.withOpacity(0.6),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                    onTap: () {
-                      _showComingSoonSnackBar(context, 'تقارير الحضور والغياب');
-                    },
-                  ),
+                  ],
+                ),
+                const SizedBox(height: 32),
 
-                  const SizedBox(height: 16),
-
-                  // 3. إدارة الجداول الدراسية والشعب (مهمة عريضة)
-                  _buildTaskCard(
-                    context: context,
-                    title: 'إدارة الشعب والمقررات',
-                    subtitle: 'إعداد وتوزيع الشعب الدراسية لمدرسي القسم',
-                    icon: Icons.grid_view_rounded,
-                    gradientColors: [
-                      const Color(0xFFF59E0B),
-                      const Color(0xFFD97706),
-                    ],
-                    trailingWidget: const Icon(
-                      Icons.arrow_forward_ios_rounded,
-                      color: Colors.white70,
-                      size: 18,
-                    ),
-                    onTap: () {
-                      _showComingSoonSnackBar(context, 'إدارة الشعب والمقررات');
-                    },
+                // عنوان القسم المهام
+                Text(
+                  'المهام الإدارية والرقابية',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: theme.colorScheme.onSurface,
                   ),
-                ],
-              ),
+                ),
+                const SizedBox(height: 16),
+
+                // 1. تعيين حسابات الطلاب (مهمة عريضة)
+                _buildTaskCard(
+                  context: context,
+                  title: 'تعيين حسابات الطلاب',
+                  subtitle: 'تهيئة حسابات الطلاب الجدد من خلال استيراد ملفات Excel/CSV',
+                  icon: Icons.assignment_ind_rounded,
+                  gradientColors: [
+                    const Color(0xFF8B5CF6),
+                    const Color(0xFF6D28D9),
+                  ],
+                  trailingWidget: const Icon(
+                    Icons.arrow_forward_ios_rounded,
+                    color: Colors.white70,
+                    size: 18,
+                  ),
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const ConfigureStudentAccountsView(),
+                      ),
+                    );
+                  },
+                ),
+
+                const SizedBox(height: 16),
+
+                // 2. إحصائيات وتقارير القسم (مهمة عريضة)
+                _buildTaskCard(
+                  context: context,
+                  title: 'تقارير الحضور والغياب',
+                  subtitle: 'متابعة نسب حضور الطلاب الإجمالية في جميع المقررات',
+                  icon: Icons.insert_chart_outlined_rounded,
+                  gradientColors: [
+                    const Color(0xFF10B981),
+                    const Color(0xFF047857),
+                  ],
+                  trailingWidget: const Icon(
+                    Icons.arrow_forward_ios_rounded,
+                    color: Colors.white70,
+                    size: 18,
+                  ),
+                  onTap: () {
+                    _showComingSoonSnackBar(context, 'تقارير الحضور والغياب');
+                  },
+                ),
+
+                const SizedBox(height: 16),
+
+                // 3. إدارة الجداول الدراسية والشعب (مهمة عريضة)
+                _buildTaskCard(
+                  context: context,
+                  title: 'إدارة الشعب والمقررات',
+                  subtitle: 'إعداد وتوزيع الشعب الدراسية لمدرسي القسم',
+                  icon: Icons.grid_view_rounded,
+                  gradientColors: [
+                    const Color(0xFFF59E0B),
+                    const Color(0xFFD97706),
+                  ],
+                  trailingWidget: const Icon(
+                    Icons.arrow_forward_ios_rounded,
+                    color: Colors.white70,
+                    size: 18,
+                  ),
+                  onTap: () {
+                    _showComingSoonSnackBar(context, 'إدارة الشعب والمقررات');
+                  },
+                ),
+              ],
             ),
           ),
         ),

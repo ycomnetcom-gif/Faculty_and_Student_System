@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:student_attendance_system/core/theme.dart';
 import 'package:student_attendance_system/features/login/login_view_model.dart';
-import 'package:student_attendance_system/features/sigin/sigin_view.dart';
 import 'package:student_attendance_system/features/sigin/faculty_signup_view.dart';
 import 'package:student_attendance_system/features/teacher_screens/home/teacher_home_view.dart';
 
@@ -77,6 +76,198 @@ class _LoginViewState extends State<LoginView> {
         }
       }
     }
+  }
+
+  void _showActivationDialog(BuildContext context, LoginViewModel viewModel) {
+    final emailController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        final theme = Theme.of(dialogContext);
+        bool localIsLoading = false;
+
+        return StatefulBuilder(
+          builder: (stateContext, setState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+              title: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.mark_email_read_outlined, color: theme.colorScheme.primary, size: 40),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'تفعيل حساب الطالب',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontFamily: 'Cairo',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              content: Form(
+                key: formKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'أدخل بريدك الإلكتروني المسجل من قبل رئيس القسم لتصلك رسالة تفعيل حسابك وإنشاء كلمة المرور:',
+                      style: TextStyle(fontFamily: 'Cairo', height: 1.4, fontSize: 13),
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: emailController,
+                      keyboardType: TextInputType.emailAddress,
+                      enabled: !localIsLoading,
+                      style: const TextStyle(fontSize: 14, fontFamily: 'Cairo'),
+                      decoration: const InputDecoration(
+                        hintText: 'student@example.com',
+                        prefixIcon: Icon(Icons.email_outlined, size: 20),
+                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                      ),
+                      validator: (value) {
+                        if (value == null || value.trim().isEmpty) {
+                          return 'الرجاء إدخال البريد الإلكتروني';
+                        }
+                        if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value.trim())) {
+                          return 'الرجاء إدخال بريد إلكتروني صحيح';
+                        }
+                        return null;
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                // زر التأكيد أو مؤشر التحميل
+                SizedBox(
+                  width: double.infinity,
+                  height: 44,
+                  child: localIsLoading
+                      ? const Center(
+                          child: CircularProgressIndicator(),
+                        )
+                      : ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: theme.colorScheme.primary,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                          onPressed: () async {
+                            if (formKey.currentState!.validate()) {
+                              setState(() {
+                                localIsLoading = true;
+                              });
+
+                              final success = await viewModel.activateAccount(emailController.text.trim());
+
+                              if (success) {
+                                if (dialogContext.mounted) {
+                                  Navigator.of(dialogContext).pop(); // إغلاق ديالوج الإدخال
+                                }
+                                if (context.mounted) {
+                                  // إظهار ديالوج النجاح باستخدام الـ context الخارجي الآمن
+                                  showDialog(
+                                    context: context,
+                                    builder: (successCtx) => AlertDialog(
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(20),
+                                      ),
+                                      title: const Center(
+                                        child: Column(
+                                          children: [
+                                            Icon(Icons.check_circle_outline, color: AppTheme.successColor, size: 50),
+                                            SizedBox(height: 8),
+                                            Text(
+                                              'تم تفعيل الحساب',
+                                              style: TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Cairo'),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      content: const Text(
+                                        'تم تفعيل حسابك بنجاح وإضافتك للنظام. تم إرسال رابط تعيين كلمة المرور إلى بريدك الإلكتروني بنجاح، يرجى فحص بريدك لإنشاء كلمة مرور جديدة ومن ثم تسجيل الدخول.',
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(fontFamily: 'Cairo', height: 1.5, fontSize: 13),
+                                      ),
+                                      actions: [
+                                        Center(
+                                          child: ElevatedButton(
+                                            onPressed: () => Navigator.of(successCtx).pop(),
+                                            child: const Text('موافق', style: TextStyle(fontFamily: 'Cairo')),
+                                          ),
+                                        )
+                                      ],
+                                    ),
+                                  );
+                                }
+                              } else {
+                                if (stateContext.mounted) {
+                                  setState(() {
+                                    localIsLoading = false;
+                                  });
+                                }
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Row(
+                                        children: [
+                                          const Icon(Icons.error_outline, color: Colors.white),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: Text(viewModel.errorMessage ?? 'فشل تفعيل الحساب'),
+                                          ),
+                                        ],
+                                      ),
+                                      backgroundColor: AppTheme.errorColor,
+                                      behavior: SnackBarBehavior.floating,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                    ),
+                                  );
+                                }
+                              }
+                            }
+                          },
+                          child: const Text(
+                            'إرسال رابط التفعيل',
+                            style: TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Cairo'),
+                          ),
+                        ),
+                ),
+                const SizedBox(height: 8),
+                // زر الإلغاء بالمنتصف أسفل منه
+                if (!localIsLoading)
+                  Center(
+                    child: TextButton(
+                      onPressed: () => Navigator.of(dialogContext).pop(),
+                      child: Text(
+                        'إلغاء',
+                        style: TextStyle(
+                          color: theme.colorScheme.onSurface.withOpacity(0.6),
+                          fontWeight: FontWeight.bold,
+                          fontFamily: 'Cairo',
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            );
+          },
+        );
+      },
+    ).then((_) {
+      emailController.dispose();
+    });
   }
 
   @override
@@ -435,40 +626,20 @@ class _LoginViewState extends State<LoginView> {
                   ),
                   const SizedBox(height: 20),
 
-                  // زر الانتقال للتسجيل الجديد
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        'ليس لديك حساب؟ ',
+                  // زر تفعيل الحساب للطلاب
+                  Center(
+                    child: TextButton(
+                      onPressed: () => _showActivationDialog(context, viewModel),
+                      child: Text(
+                        'تفعيل حسابك (للطلاب فقط)',
                         style: TextStyle(
-                          color: theme.brightness == Brightness.light
-                              ? const Color(0xFF475569)
-                              : const Color(0xFF94A3B8),
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: theme.colorScheme.primary,
+                          fontFamily: 'Cairo',
                         ),
                       ),
-                      TextButton(
-                        onPressed: () {
-                          Navigator.of(context).pushReplacement(
-                            MaterialPageRoute(
-                              builder: (_) => const SiginView(),
-                            ),
-                          );
-                        },
-                        style: TextButton.styleFrom(
-                          padding: EdgeInsets.zero,
-                          minimumSize: Size.zero,
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        ),
-                        child: Text(
-                          'تقديم طلب تسجيل',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: theme.colorScheme.primary,
-                          ),
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                   const SizedBox(height: 10),
                   // زر الانتقال لتسجيل عضو هيئة التدريس

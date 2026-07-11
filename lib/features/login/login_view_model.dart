@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/database_helper.dart';
+import '../../core/sync_service.dart';
 
 class LoginViewModel extends ChangeNotifier {
   bool _isLoading = false;
@@ -89,9 +90,9 @@ class LoginViewModel extends ChangeNotifier {
                   '',
             );
             await prefs.setString(
-              'acceptAt',
-              data['acceptAt']?.toString() ??
-                  data['acceptedAt']?.toString() ??
+              'createdAt',
+              data['createdAt']?.toString() ??
+                  data['createAt']?.toString() ??
                   '',
             );
             await prefs.setBool('is_logged_in', _rememberMe);
@@ -116,9 +117,17 @@ class LoginViewModel extends ChangeNotifier {
                 'email': data['email']?.toString() ?? user.email ?? '',
                 'role': role,
                 'createAt': data['createAt']?.toString() ?? data['createdAt']?.toString() ?? '',
-                'acceptAt': data['acceptAt']?.toString() ?? data['acceptedAt']?.toString() ?? '',
+                'createdAt': data['createdAt']?.toString() ?? data['createAt']?.toString() ?? '',
+                'department': data['department']?.toString() ?? 'غير محدد',
                 'sync': 1,
               });
+            }
+
+            // 5. جلب وتحديث البيانات من السيرفر (المواد، الأقسام، إلخ) عند أول تسجيل دخول
+            try {
+              await SyncService.instance.pullUpdatesFromServer();
+            } catch (syncError) {
+              debugPrint('Error pulling initial updates during login: $syncError');
             }
           } else {
             // الحساب غير موجود في الكولكشن المحددة
@@ -150,6 +159,151 @@ class LoginViewModel extends ChangeNotifier {
     } catch (e) {
       _isLoading = false;
       _errorMessage = 'حدث خطأ أثناء تسجيل الدخول: ${e.toString()}';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  // تفعيل حساب الطالب
+  Future<bool> activateAccount(String email) async {
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      // 1. التحقق من وجود تهيئة الحساب في Firestore
+      final firestore = FirebaseFirestore.instance;
+      final configQuery = await firestore
+          .collection('Configure student accounts')
+          .where('email', isEqualTo: email.trim())
+          .get();
+
+      if (configQuery.docs.isEmpty) {
+        _errorMessage = 'البريد الإلكتروني هذا غير مهيأ من قبل رئيس القسم. يرجى التواصل مع رئيس القسم أولاً.';
+        _isLoading = false;
+        notifyListeners();
+        return false;
+      }
+
+      final configData = configQuery.docs.first.data();
+      final registrationId = configQuery.docs.first.id; // registration_id
+      final studentName = configData['student_name'] ?? '';
+      final department = configData['department'] ?? '';
+      final level = configData['level'] ?? '';
+      final track = configData['track'] ?? '';
+
+      // 2. محاولة إنشاء المستخدم في Firebase Auth
+      final tempPassword = 'TempPassword!' + DateTime.now().millisecondsSinceEpoch.toString();
+      User? user;
+      try {
+        final authResult = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+          email: email.trim(),
+          password: tempPassword,
+        );
+        user = authResult.user;
+      } on FirebaseAuthException catch (authEx) {
+        if (authEx.code != 'email-already-in-use') {
+          _errorMessage = 'فشل تفعيل الحساب في Auth: ${authEx.message}';
+          _isLoading = false;
+          notifyListeners();
+          return false;
+        }
+      }
+
+      // 3. إرسال رابط تعيين/إعادة تعيين كلمة المرور
+      await FirebaseAuth.instance.sendPasswordResetEmail(email: email.trim());
+
+      // 4. حفظ الحساب في كولكشن users وجدول users
+      if (user != null) {
+        final String uid = user.uid;
+        final String now = DateTime.now().toIso8601String();
+
+        // الحفظ في Firestore كولكشن users
+        await firestore.collection('users').doc(uid).set({
+          'id': registrationId,
+          'name': studentName,
+          'email': email.trim(),
+          'role': 'طالب',
+          'createdAt': now,
+          'department': department,
+          'level': level,
+          'track': track,
+        });
+
+        // الحفظ في SQLite جدول users
+        await DatabaseHelper.instance.saveUser({
+          'id': registrationId,
+          'name': studentName,
+          'email': email.trim(),
+          'role': 'طالب',
+          'createAt': now,
+          'createdAt': now,
+          'department': department,
+          'sync': 1,
+        });
+      } else {
+        // إذا كان مسجلاً بالفعل في Auth (email-already-in-use)
+        // قد يكون السجل مفقوداً في كولكشن users أو قاعدة البيانات المحلية، فنبحث عنه ونقوم بمزامنته
+        final userQuery = await firestore
+            .collection('users')
+            .where('email', isEqualTo: email.trim())
+            .get();
+
+        if (userQuery.docs.isEmpty) {
+          // في حال كان مسجلاً بـ Auth ومفقوداً بـ users، نقوم بإنشائه
+          final String tempUid = 'uid_' + DateTime.now().millisecondsSinceEpoch.toString();
+          final String now = DateTime.now().toIso8601String();
+
+          await firestore.collection('users').doc(tempUid).set({
+            'id': registrationId,
+            'name': studentName,
+            'email': email.trim(),
+            'role': 'طالب',
+            'createdAt': now,
+            'department': department,
+            'level': level,
+            'track': track,
+          });
+
+          await DatabaseHelper.instance.saveUser({
+            'id': registrationId,
+            'name': studentName,
+            'email': email.trim(),
+            'role': 'طالب',
+            'createAt': now,
+            'createdAt': now,
+            'department': department,
+            'sync': 1,
+          });
+        } else {
+          final doc = userQuery.docs.first;
+          final String uid = doc.id;
+          final String now = DateTime.now().toIso8601String();
+
+          // تحديث الحقل ليكون registrationId في Firestore
+          await firestore.collection('users').doc(uid).update({
+            'id': registrationId,
+          });
+
+          await DatabaseHelper.instance.saveUser({
+            'id': registrationId,
+            'name': studentName,
+            'email': email.trim(),
+            'role': 'طالب',
+            'createAt': now,
+            'createdAt': now,
+            'department': department,
+            'sync': 1,
+          });
+        }
+      }
+
+      _isLoading = false;
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _isLoading = false;
+      _errorMessage = 'فشلت عملية تفعيل الحساب: ${e.toString()}';
       notifyListeners();
       return false;
     }

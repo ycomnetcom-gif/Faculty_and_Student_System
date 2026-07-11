@@ -6,12 +6,10 @@ import 'package:provider/provider.dart';
 import 'package:student_attendance_system/core/theme.dart';
 import 'package:student_attendance_system/features/login/login_view.dart';
 import 'package:student_attendance_system/features/login/login_view_model.dart';
-import 'package:student_attendance_system/features/sigin/sigin_view_model.dart';
 import 'package:student_attendance_system/features/sigin/faculty_signup_view_model.dart';
 import 'package:student_attendance_system/features/teacher_screens/home/teacher_home_view_model.dart';
 import 'package:student_attendance_system/features/vice_dean_for_academic _affairs/departments/departments_view_model.dart';
 import 'package:student_attendance_system/features/vice_dean_for_academic _affairs/faculty_accounts/faculty_accounts_view_model.dart';
-import 'package:student_attendance_system/features/teacher_screens/head_of_department/registration_requests/registration_requests_view_model.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:student_attendance_system/features/teacher_screens/home/teacher_home_view.dart';
 import 'package:student_attendance_system/firebase_options.dart';
@@ -45,11 +43,9 @@ class MyApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => LoginViewModel()),
         ChangeNotifierProvider(create: (_) => TeacherHomeViewModel()),
-        ChangeNotifierProvider(create: (_) => SiginViewModel()),
         ChangeNotifierProvider(create: (_) => FacultySignupViewModel()),
         ChangeNotifierProvider(create: (_) => DepartmentsViewModel()),
         ChangeNotifierProvider(create: (_) => FacultyAccountsViewModel()),
-        ChangeNotifierProvider(create: (_) => RegistrationRequestsViewModel()),
       ],
       child: MaterialApp(
         title: 'نظام حضور الطلاب',

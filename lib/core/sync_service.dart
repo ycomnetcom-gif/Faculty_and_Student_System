@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'database_helper.dart';
 
 class SyncService {
@@ -33,6 +34,9 @@ class SyncService {
       totalSynced += await _syncDepartments();
       totalSynced += await _syncDeletedDepartments();
       totalSynced += await _syncCourseAssignments();
+      totalSynced += await _syncDeletedCourseAssignments();
+      totalSynced += await _syncStudentAccountConfigs();
+      totalSynced += await _syncDeletedStudentAccountConfigs();
     } catch (e) {
       debugPrint('Sync execution failed: $e');
       rethrow;
@@ -256,6 +260,30 @@ class SyncService {
     return syncedCount;
   }
 
+  // مزامنة حذف تعيينات المواد مع Firestore
+  Future<int> _syncDeletedCourseAssignments() async {
+    final deleted = await DatabaseHelper.instance.getDeletedCourseAssignments();
+    if (deleted.isEmpty) return 0;
+
+    debugPrint('Found ${deleted.length} pending course assignment deletions. Starting sync...');
+    final firestore = FirebaseFirestore.instance;
+    int syncedCount = 0;
+
+    for (final row in deleted) {
+      final String id = row['id'] as String;
+      try {
+        await firestore.collection('course_assignments').doc(id).delete();
+        await DatabaseHelper.instance.deleteCourseAssignmentFully(id);
+        syncedCount++;
+        debugPrint('Deleted course assignment $id synced from Firestore.');
+      } catch (e) {
+        debugPrint('Failed to sync deletion of course assignment $id: $e');
+      }
+    }
+
+    return syncedCount;
+  }
+
   // جلب كل التحديثات من السيرفر وتخزينها في قاعدة البيانات المحلية (SQL)
   Future<void> pullUpdatesFromServer() async {
     final results = await Connectivity().checkConnectivity();
@@ -380,6 +408,31 @@ class SyncService {
     } catch (e) {
       debugPrint('Error pulling course_assignments: $e');
     }
+
+    // 5. مزامنة Configure student accounts (إعداد حسابات الطلاب)
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final department = prefs.getString('department');
+      Query query = firestore.collection('Configure student accounts');
+      if (department != null && department.isNotEmpty && department != 'غير محدد' && department != 'غير مححدد') {
+        query = query.where('department', isEqualTo: department);
+      }
+      final snapshot = await query.get().timeout(const Duration(seconds: 10));
+      for (final doc in snapshot.docs) {
+        final data = doc.data() as Map<String, dynamic>;
+        await DatabaseHelper.instance.saveStudentAccountConfig({
+          'registration_id': doc.id,
+          'student_name': data['student_name'] ?? '',
+          'email': data['email'] ?? '',
+          'department': data['department'] ?? '',
+          'level': data['level'] ?? '',
+          'track': data['track'] ?? '',
+          'sync': 1,
+        });
+      }
+    } catch (e) {
+      debugPrint('Error pulling Configure student accounts: $e');
+    }
   }
 
   // مزامنة ثنائية الاتجاه (رفع وتنزيل)
@@ -388,5 +441,105 @@ class SyncService {
     await triggerSync();
     // تنزيل
     await pullUpdatesFromServer();
+  }
+
+  // مزامنة إعدادات حسابات الطلاب إلى السيرفر
+  Future<int> _syncStudentAccountConfigs() async {
+    final unsynced = await DatabaseHelper.instance.getUnsyncedStudentAccountConfigs();
+    if (unsynced.isEmpty) return 0;
+
+    debugPrint('Found ${unsynced.length} unsynced student account configurations. Starting sync...');
+    final firestore = FirebaseFirestore.instance;
+    int syncedCount = 0;
+
+    for (final row in unsynced) {
+      final String regId = row['registration_id'] as String;
+      try {
+        await firestore.collection('Configure student accounts').doc(regId).set({
+          'registration_id': regId,
+          'student_name': row['student_name'] ?? '',
+          'email': row['email'] ?? '',
+          'department': row['department'] ?? '',
+          'level': row['level'] ?? '',
+          'track': row['track'] ?? '',
+          'created_at': FieldValue.serverTimestamp(),
+        });
+
+        await DatabaseHelper.instance.updateStudentAccountConfigSyncStatus(regId, 1);
+        syncedCount++;
+        debugPrint('Student account config $regId synced successfully.');
+      } catch (e) {
+        debugPrint('Failed to sync student account config $regId: $e');
+      }
+    }
+
+    return syncedCount;
+  }
+
+  // مزامنة حذف إعدادات حسابات الطلاب مع Firestore
+  Future<int> _syncDeletedStudentAccountConfigs() async {
+    final deleted = await DatabaseHelper.instance.getDeletedStudentAccountConfigs();
+    if (deleted.isEmpty) return 0;
+
+    debugPrint('Found ${deleted.length} pending student account configuration deletions. Starting sync...');
+    final firestore = FirebaseFirestore.instance;
+    int syncedCount = 0;
+
+    for (final row in deleted) {
+      final String regId = row['registration_id'] as String;
+      try {
+        await firestore.collection('Configure student accounts').doc(regId).delete();
+        await DatabaseHelper.instance.deleteStudentAccountConfigFully(regId);
+        syncedCount++;
+        debugPrint('Deleted student account configuration $regId synced from Firestore.');
+      } catch (e) {
+        debugPrint('Failed to sync deletion of student account configuration $regId: $e');
+      }
+    }
+
+    return syncedCount;
+  }
+
+  // مزامنة مخصصة وسريعة لإعدادات حسابات الطلاب فقط (رفع وتنزيل)
+  Future<int> syncStudentAccountConfigsOnly({String? department}) async {
+    final results = await Connectivity().checkConnectivity();
+    final hasConnection = results.any((result) => result != ConnectivityResult.none);
+    if (!hasConnection) {
+      throw Exception('no_internet');
+    }
+
+    int totalSynced = 0;
+    
+    // 1. رفع المضاف حديثاً أوفلاين
+    totalSynced += await _syncStudentAccountConfigs();
+    
+    // 2. رفع وحذف المحذوف أوفلاين
+    totalSynced += await _syncDeletedStudentAccountConfigs();
+    
+    // 3. جلب التحديثات الجديدة فقط من كولكشن Configure student accounts
+    try {
+      final firestore = FirebaseFirestore.instance;
+      Query query = firestore.collection('Configure student accounts');
+      if (department != null && department.isNotEmpty) {
+        query = query.where('department', isEqualTo: department);
+      }
+      final snapshot = await query.get().timeout(const Duration(seconds: 10));
+      for (final doc in snapshot.docs) {
+        final data = doc.data() as Map<String, dynamic>;
+        await DatabaseHelper.instance.saveStudentAccountConfig({
+          'registration_id': doc.id,
+          'student_name': data['student_name'] ?? '',
+          'email': data['email'] ?? '',
+          'department': data['department'] ?? '',
+          'level': data['level'] ?? '',
+          'track': data['track'] ?? '',
+          'sync': 1,
+        });
+      }
+    } catch (e) {
+      debugPrint('Error pulling Configure student accounts: $e');
+    }
+
+    return totalSynced;
   }
 }

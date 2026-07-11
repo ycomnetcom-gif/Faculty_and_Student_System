@@ -66,5 +66,7 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>يحتاج التطبيق إلى صلاحية الوصول إلى الكاميرا لمسح باركود الحضور (QR Code).</string>
 </dict>
 </plist>

@@ -70,15 +70,19 @@ class _IdleStep extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const SizedBox(height: 8),
-          Text('استيراد الجدول الدراسي لربط المعلمين بالمواد',
-              style: theme.textTheme.headlineSmall
-                  ?.copyWith(fontWeight: FontWeight.bold)),
+          Text(
+            'استيراد الجدول الدراسي لربط المعلمين بالمواد',
+            style: theme.textTheme.headlineSmall?.copyWith(
+              fontWeight: FontWeight.bold,
+            ),
+          ),
           const SizedBox(height: 8),
           Text(
             'اختر ملف CSV يحتوي على أعمدة: Subject, Teachers, Student Sets.',
             style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurface.withOpacity(0.6),
-                height: 1.5),
+              color: theme.colorScheme.onSurface.withOpacity(0.6),
+              height: 1.5,
+            ),
           ),
           const SizedBox(height: 32),
           GestureDetector(
@@ -86,19 +90,20 @@ class _IdleStep extends StatelessWidget {
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 200),
               width: double.infinity,
-              padding:
-                  const EdgeInsets.symmetric(vertical: 48, horizontal: 24),
+              padding: const EdgeInsets.symmetric(vertical: 48, horizontal: 24),
               decoration: BoxDecoration(
                 color: theme.colorScheme.surface.withOpacity(0.8),
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(
-                    color: theme.colorScheme.primary.withOpacity(0.35),
-                    width: 2),
+                  color: theme.colorScheme.primary.withOpacity(0.35),
+                  width: 2,
+                ),
                 boxShadow: [
                   BoxShadow(
-                      color: theme.colorScheme.primary.withOpacity(0.06),
-                      blurRadius: 20,
-                      offset: const Offset(0, 8))
+                    color: theme.colorScheme.primary.withOpacity(0.06),
+                    blurRadius: 20,
+                    offset: const Offset(0, 8),
+                  ),
                 ],
               ),
               child: vm.isLoading
@@ -106,8 +111,11 @@ class _IdleStep extends StatelessWidget {
                   : Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.upload_file_rounded,
-                            size: 64, color: theme.colorScheme.primary),
+                        Icon(
+                          Icons.upload_file_rounded,
+                          size: 64,
+                          color: theme.colorScheme.primary,
+                        ),
                         const SizedBox(height: 16),
                         Text(
                           vm.selectedFileName ?? 'اضغط لاختيار ملف CSV',
@@ -121,10 +129,14 @@ class _IdleStep extends StatelessWidget {
                         ),
                         if (vm.selectedFileName == null) ...[
                           const SizedBox(height: 8),
-                          Text('الصيغة المدعومة: .csv',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                  color: theme.colorScheme.onSurface
-                                      .withOpacity(0.4))),
+                          Text(
+                            'الصيغة المدعومة: .csv',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onSurface.withOpacity(
+                                0.4,
+                              ),
+                            ),
+                          ),
                         ],
                       ],
                     ),
@@ -174,22 +186,30 @@ class _ManualMappingStep extends StatelessWidget {
                         color: Colors.orange.withOpacity(0.12),
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: const Icon(Icons.link_rounded,
-                          color: Colors.orange, size: 26),
+                      child: const Icon(
+                        Icons.link_rounded,
+                        color: Colors.orange,
+                        size: 26,
+                      ),
                     ),
                     const SizedBox(width: 14),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('ربط المعلمين يدوياً',
-                              style: theme.textTheme.titleLarge
-                                  ?.copyWith(fontWeight: FontWeight.bold)),
+                          Text(
+                            'ربط المعلمين يدوياً',
+                            style: theme.textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                           Text(
                             'الأسماء التالية لم تُطابَق تلقائياً، يُرجى ربطها.',
                             style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onSurface
-                                    .withOpacity(0.55)),
+                              color: theme.colorScheme.onSurface.withOpacity(
+                                0.55,
+                              ),
+                            ),
                           ),
                         ],
                       ),
@@ -237,12 +257,17 @@ class _ManualMappingStep extends StatelessWidget {
                           ? () => vm.saveAssignments()
                           : null,
                       icon: const Icon(Icons.save_rounded),
-                      label: const Text('حفظ التعيينات',
-                          style: TextStyle(
-                              fontSize: 16, fontWeight: FontWeight.w600)),
+                      label: const Text(
+                        'حفظ التعيينات',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                       style: ElevatedButton.styleFrom(
                         shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14)),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
                       ),
                     ),
             ),
@@ -267,8 +292,7 @@ class _ReadyToSaveStep extends StatelessWidget {
       slivers: [
         SliverToBoxAdapter(
           child: Padding(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -277,11 +301,16 @@ class _ReadyToSaveStep extends StatelessWidget {
                       'تم التعرف على جميع المعلمين تلقائياً (${vm.parsedRows.length} صف جاهز للحفظ).',
                 ),
                 const SizedBox(height: 20),
-                Text('معاينة التعيينات',
-                    style: theme.textTheme.titleMedium
-                        ?.copyWith(fontWeight: FontWeight.bold)),
+                Text(
+                  'معاينة التعيينات',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
                 const SizedBox(height: 12),
-                ...vm.parsedRows.take(15).map(
+                ...vm.parsedRows
+                    .take(15)
+                    .map(
                       (row) => _PreviewRow(
                         subject: row.subjectName,
                         teacher: row.rawTeacherName,
@@ -295,8 +324,8 @@ class _ReadyToSaveStep extends StatelessWidget {
                     child: Text(
                       '... و ${vm.parsedRows.length - 15} صف إضافي',
                       style: theme.textTheme.bodySmall?.copyWith(
-                          color:
-                              theme.colorScheme.onSurface.withOpacity(0.5)),
+                        color: theme.colorScheme.onSurface.withOpacity(0.5),
+                      ),
                     ),
                   ),
                 if (vm.errorMessage != null) ...[
@@ -321,12 +350,17 @@ class _ReadyToSaveStep extends StatelessWidget {
                     : ElevatedButton.icon(
                         onPressed: () => vm.saveAssignments(),
                         icon: const Icon(Icons.save_rounded),
-                        label: const Text('حفظ التعيينات',
-                            style: TextStyle(
-                                fontSize: 16, fontWeight: FontWeight.w600)),
+                        label: const Text(
+                          'حفظ التعيينات',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
                         style: ElevatedButton.styleFrom(
                           shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14)),
+                            borderRadius: BorderRadius.circular(14),
+                          ),
                         ),
                       ),
               ),
@@ -360,20 +394,27 @@ class _DoneStep extends StatelessWidget {
               color: Colors.green.withOpacity(0.1),
               shape: BoxShape.circle,
             ),
-            child: const Icon(Icons.check_circle_rounded,
-                color: Colors.green, size: 72),
+            child: const Icon(
+              Icons.check_circle_rounded,
+              color: Colors.green,
+              size: 72,
+            ),
           ),
           const SizedBox(height: 24),
-          Text('اكتملت العملية',
-              style: theme.textTheme.headlineSmall
-                  ?.copyWith(fontWeight: FontWeight.bold)),
+          Text(
+            'اكتملت العملية',
+            style: theme.textTheme.headlineSmall?.copyWith(
+              fontWeight: FontWeight.bold,
+            ),
+          ),
           const SizedBox(height: 12),
           Text(
             vm.successMessage ?? 'تم حفظ التعيينات بنجاح.',
             textAlign: TextAlign.center,
             style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurface.withOpacity(0.65),
-                height: 1.5),
+              color: theme.colorScheme.onSurface.withOpacity(0.65),
+              height: 1.5,
+            ),
           ),
           const SizedBox(height: 8),
           Text(
@@ -392,16 +433,20 @@ class _DoneStep extends StatelessWidget {
                 icon: const Icon(Icons.refresh_rounded),
                 label: const Text('استيراد ملف آخر'),
                 style: OutlinedButton.styleFrom(
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12))),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
               ),
               ElevatedButton.icon(
                 onPressed: () => Navigator.of(context).pop(),
                 icon: const Icon(Icons.home_rounded),
                 label: const Text('العودة'),
                 style: ElevatedButton.styleFrom(
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12))),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
               ),
             ],
           ),
@@ -438,9 +483,10 @@ class _TeacherMappingCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withOpacity(0.04),
-              blurRadius: 10,
-              offset: const Offset(0, 4))
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
         ],
         border: Border.all(
           color: currentUid != null
@@ -465,8 +511,9 @@ class _TeacherMappingCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   'من الـ CSV: $rawName',
-                  style: theme.textTheme.bodyMedium
-                      ?.copyWith(fontWeight: FontWeight.w600),
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
@@ -490,12 +537,15 @@ class _TeacherMappingCard extends StatelessWidget {
               value: currentUid,
               isExpanded: true,
               decoration: InputDecoration(
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 12,
+                ),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
                   borderSide: BorderSide(
-                      color: theme.colorScheme.outline.withOpacity(0.3)),
+                    color: theme.colorScheme.outline.withOpacity(0.3),
+                  ),
                 ),
                 filled: true,
                 fillColor: theme.colorScheme.surfaceContainerHighest
@@ -503,11 +553,15 @@ class _TeacherMappingCard extends StatelessWidget {
                 hintText: 'اختر المعلم المقابل...',
               ),
               items: teachers
-                  .map((t) => DropdownMenuItem<String>(
-                        value: t['id'] as String,
-                        child: Text(t['name'] as String? ?? '',
-                            overflow: TextOverflow.ellipsis),
-                      ))
+                  .map(
+                    (t) => DropdownMenuItem<String>(
+                      value: t['id'] as String,
+                      child: Text(
+                        t['name'] as String? ?? '',
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  )
                   .toList(),
               onChanged: (uid) {
                 if (uid != null) onChanged(uid);
@@ -540,35 +594,50 @@ class _PreviewRow extends StatelessWidget {
       decoration: BoxDecoration(
         color: theme.colorScheme.surface.withOpacity(0.75),
         borderRadius: BorderRadius.circular(10),
-        border:
-            Border.all(color: theme.colorScheme.outline.withOpacity(0.15)),
+        border: Border.all(color: theme.colorScheme.outline.withOpacity(0.15)),
       ),
       child: Row(
         children: [
           Expanded(
-              flex: 3,
-              child: Text(subject,
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(fontWeight: FontWeight.w600),
-                  overflow: TextOverflow.ellipsis)),
+            flex: 3,
+            child: Text(
+              subject,
+              style: theme.textTheme.bodySmall?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
           Expanded(
-              flex: 2,
-              child: Text(teacher,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurface.withOpacity(0.6)),
-                  overflow: TextOverflow.ellipsis)),
+            flex: 2,
+            child: Text(
+              teacher,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurface.withOpacity(0.6),
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
           Expanded(
-              flex: 2,
-              child: Text(groups.join(', '),
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: theme.colorScheme.primary),
-                  overflow: TextOverflow.ellipsis)),
+            flex: 2,
+            child: Text(
+              groups.join(', '),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.primary,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
           Expanded(
-              flex: 2,
-              child: Text(room.isNotEmpty ? room : 'بلا قاعة',
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: theme.colorScheme.secondary),
-                  overflow: TextOverflow.ellipsis)),
+            flex: 2,
+            child: Text(
+              room.isNotEmpty ? room : 'بلا قاعة',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.secondary,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
         ],
       ),
     );
@@ -593,8 +662,11 @@ class _ErrorBanner extends StatelessWidget {
           const Icon(Icons.error_outline_rounded, color: Colors.red, size: 20),
           const SizedBox(width: 10),
           Expanded(
-              child: Text(message,
-                  style: const TextStyle(color: Colors.red, height: 1.4))),
+            child: Text(
+              message,
+              style: const TextStyle(color: Colors.red, height: 1.4),
+            ),
+          ),
         ],
       ),
     );
@@ -616,12 +688,18 @@ class _SuccessBanner extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Icon(Icons.check_circle_outline_rounded,
-              color: Colors.green, size: 20),
+          const Icon(
+            Icons.check_circle_outline_rounded,
+            color: Colors.green,
+            size: 20,
+          ),
           const SizedBox(width: 10),
           Expanded(
-              child: Text(message,
-                  style: const TextStyle(color: Colors.green, height: 1.4))),
+            child: Text(
+              message,
+              style: const TextStyle(color: Colors.green, height: 1.4),
+            ),
+          ),
         ],
       ),
     );
@@ -632,8 +710,11 @@ class _InfoCard extends StatelessWidget {
   final IconData icon;
   final String title;
   final String value;
-  const _InfoCard(
-      {required this.icon, required this.title, required this.value});
+  const _InfoCard({
+    required this.icon,
+    required this.title,
+    required this.value,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -645,9 +726,10 @@ class _InfoCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withOpacity(0.04),
-              blurRadius: 8,
-              offset: const Offset(0, 4))
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
         ],
       ),
       child: Row(
@@ -657,12 +739,18 @@ class _InfoCard extends StatelessWidget {
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title,
-                  style: theme.textTheme.labelMedium?.copyWith(
-                      color: theme.colorScheme.onSurface.withOpacity(0.5))),
-              Text(value,
-                  style: theme.textTheme.bodyMedium
-                      ?.copyWith(fontWeight: FontWeight.w600)),
+              Text(
+                title,
+                style: theme.textTheme.labelMedium?.copyWith(
+                  color: theme.colorScheme.onSurface.withOpacity(0.5),
+                ),
+              ),
+              Text(
+                value,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ],
           ),
         ],

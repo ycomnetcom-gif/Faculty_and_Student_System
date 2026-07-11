@@ -4,6 +4,8 @@ import 'package:student_attendance_system/features/login/login_view.dart';
 import 'package:student_attendance_system/core/sync_service.dart';
 import 'package:student_attendance_system/features/teacher_screens/head_of_department/head_of_department_view.dart';
 import 'package:student_attendance_system/features/vice_dean_for_academic _affairs/vice_dean_academic_view.dart';
+import 'package:student_attendance_system/features/teacher_screens/attendance_barcode/attendance_barcode_view.dart';
+import 'package:student_attendance_system/features/student_screens/qr_scan/student_qr_scan_entry_view.dart';
 import 'teacher_home_view_model.dart';
 
 class TeacherHomeView extends StatefulWidget {
@@ -522,47 +524,66 @@ class _TeacherHomeViewState extends State<TeacherHomeView> {
     TeacherProfile? profile,
     bool isDark,
   ) {
-    final services = [
-      _ServiceItem(
-        title: 'باركود التحضير',
-        subtitle: 'توليد كود QR لحضور المحاضرة',
-        icon: Icons.qr_code_scanner_rounded,
-        color: const Color(0xFF2563EB), // أزرق
-        onTap: () => _navigateToService(context, 'باركود التحضير'),
-      ),
-      _ServiceItem(
-        title: 'التحضير اليدوي',
-        subtitle: 'تسجيل الحضور يدويًا للطلاب',
-        icon: Icons.playlist_add_check_rounded,
-        color: const Color(0xFF059669), // أخضر
-        onTap: () => _navigateToService(context, 'التحضير اليدوي'),
-      ),
-      _ServiceItem(
-        title: 'إحصائيات المحاضرات',
-        subtitle: 'مراجعة نسب الحضور وتقاريرها',
-        icon: Icons.bar_chart_rounded,
-        color: const Color(0xFFD97706), // برتقالي
-        onTap: () => _navigateToService(context, 'إحصائيات المحاضرات'),
-      ),
-      _ServiceItem(
-        title: 'رفع إلى رئيس القسم',
-        subtitle: 'إرسال ومشاركة كشوفات الحضور',
-        icon: Icons.cloud_upload_rounded,
-        color: const Color(0xFF7C3AED), // بنفسجي
-        onTap: () => _navigateToService(context, 'رفع إلى رئيس القسم'),
-      ),
+    final services = <_ServiceItem>[];
+
+    if (profile != null && profile.academicTitle == 'طالب') {
+      services.add(
+        _ServiceItem(
+          title: 'مسح باركود التحضير',
+          subtitle: 'مسح الـ QR لتسجيل حضورك في القاعة',
+          icon: Icons.qr_code_scanner_rounded,
+          color: const Color(0xFF10B981), // أخضر مميز
+          onTap: () => _navigateToService(context, 'مسح باركود التحضير'),
+        ),
+      );
+    } else {
+      services.addAll([
+        _ServiceItem(
+          title: 'باركود التحضير',
+          subtitle: 'توليد كود QR لحضور المحاضرة',
+          icon: Icons.qr_code_scanner_rounded,
+          color: const Color(0xFF2563EB), // أزرق
+          onTap: () => _navigateToService(context, 'باركود التحضير'),
+        ),
+        _ServiceItem(
+          title: 'التحضير اليدوي',
+          subtitle: 'تسجيل الحضور يدويًا للطلاب',
+          icon: Icons.playlist_add_check_rounded,
+          color: const Color(0xFF059669), // أخضر
+          onTap: () => _navigateToService(context, 'التحضير اليدوي'),
+        ),
+        _ServiceItem(
+          title: 'إحصائيات المحاضرات',
+          subtitle: 'مراجعة نسب الحضور وتقاريرها',
+          icon: Icons.bar_chart_rounded,
+          color: const Color(0xFFD97706), // برتقالي
+          onTap: () => _navigateToService(context, 'إحصائيات المحاضرات'),
+        ),
+        _ServiceItem(
+          title: 'رفع إلى رئيس القسم',
+          subtitle: 'إرسال ومشاركة كشوفات الحضور',
+          icon: Icons.cloud_upload_rounded,
+          color: const Color(0xFF7C3AED), // بنفسجي
+          onTap: () => _navigateToService(context, 'رفع إلى رئيس القسم'),
+        ),
+      ]);
+
       if (profile != null &&
           (profile.academicTitle == 'رئيس قسم' ||
               profile.academicTitle == 'مطور' ||
               profile.academicTitle.toLowerCase() == 'developer' ||
-              profile.academicTitle.toLowerCase() == 'admin'))
-        _ServiceItem(
-          title: 'مهام رئيس القسم',
-          subtitle: 'مراجعة الطلبات والتحكم',
-          icon: Icons.admin_panel_settings_rounded,
-          color: const Color(0xFFDC2626), // أحمر
-          onTap: () => _navigateToService(context, 'مهام رئيس القسم'),
-        ),
+              profile.academicTitle.toLowerCase() == 'admin')) {
+        services.add(
+          _ServiceItem(
+            title: 'مهام رئيس القسم',
+            subtitle: 'مراجعة الطلبات والتحكم',
+            icon: Icons.admin_panel_settings_rounded,
+            color: const Color(0xFFDC2626), // أحمر
+            onTap: () => _navigateToService(context, 'مهام رئيس القسم'),
+          ),
+        );
+      }
+
       if (profile != null &&
           (profile.academicTitle == 'نائب العميد للشؤون الأكاديمية' ||
               profile.academicTitle == 'نائب العميد' ||
@@ -570,16 +591,19 @@ class _TeacherHomeViewState extends State<TeacherHomeView> {
               profile.academicTitle.toLowerCase() == 'vice_dean' ||
               profile.academicTitle == 'مطور' ||
               profile.academicTitle.toLowerCase() == 'developer' ||
-              profile.academicTitle.toLowerCase() == 'admin'))
-        _ServiceItem(
-          title: 'مهام نائب العميد',
-          subtitle: 'اعتماد المناهج والجداول والخطط الدراسية',
-          icon: Icons.admin_panel_settings_outlined,
-          color: const Color(0xFF4F46E5), // نختار لون إنديغو مميز
-          onTap: () =>
-              _navigateToService(context, 'مهام نائب العميد للشؤون الأكاديمية'),
-        ),
-    ];
+              profile.academicTitle.toLowerCase() == 'admin')) {
+        services.add(
+          _ServiceItem(
+            title: 'مهام نائب العميد',
+            subtitle: 'اعتماد المناهج والجداول والخطط الدراسية',
+            icon: Icons.admin_panel_settings_outlined,
+            color: const Color(0xFF4F46E5),
+            onTap: () =>
+                _navigateToService(context, 'مهام نائب العميد للشؤون الأكاديمية'),
+          ),
+        );
+      }
+    }
 
     return GridView.builder(
       shrinkWrap: true,
@@ -765,80 +789,91 @@ class _TeacherHomeViewState extends State<TeacherHomeView> {
               },
             ),
             const Divider(),
-            ListTile(
-              leading: const Icon(Icons.qr_code_scanner_rounded),
-              title: const Text('باركود التحضير'),
-              onTap: () {
-                Navigator.of(context).pop();
-                _navigateToService(context, 'باركود التحضير');
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.playlist_add_check_rounded),
-              title: const Text('التحضير اليدوي'),
-              onTap: () {
-                Navigator.of(context).pop();
-                _navigateToService(context, 'التحضير اليدوي');
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.bar_chart_rounded),
-              title: const Text('إحصائيات المحاضرات'),
-              onTap: () {
-                Navigator.of(context).pop();
-                _navigateToService(context, 'إحصائيات المحاضرات');
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.cloud_upload_rounded),
-              title: const Text('رفع إلى رئيس القسم'),
-              onTap: () {
-                Navigator.of(context).pop();
-                _navigateToService(context, 'رفع إلى رئيس القسم');
-              },
-            ),
-            if (isHeadOrDev) ...[
-              const Divider(),
+            if (profile != null && profile.academicTitle == 'طالب') ...[
               ListTile(
-                leading: const Icon(
-                  Icons.admin_panel_settings_outlined,
-                  color: Colors.red,
-                ),
-                title: const Text(
-                  'مهام رئيس القسم',
-                  style: TextStyle(
+                leading: const Icon(Icons.qr_code_scanner_rounded),
+                title: const Text('مسح باركود التحضير'),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  _navigateToService(context, 'مسح باركود التحضير');
+                },
+              ),
+            ] else ...[
+              ListTile(
+                leading: const Icon(Icons.qr_code_scanner_rounded),
+                title: const Text('باركود التحضير'),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  _navigateToService(context, 'باركود التحضير');
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.playlist_add_check_rounded),
+                title: const Text('التحضير اليدوي'),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  _navigateToService(context, 'التحضير اليدوي');
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.bar_chart_rounded),
+                title: const Text('إحصائيات المحاضرات'),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  _navigateToService(context, 'إحصائيات المحاضرات');
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.cloud_upload_rounded),
+                title: const Text('رفع إلى رئيس القسم'),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  _navigateToService(context, 'رفع إلى رئيس القسم');
+                },
+              ),
+              if (isHeadOrDev) ...[
+                const Divider(),
+                ListTile(
+                  leading: const Icon(
+                    Icons.admin_panel_settings_outlined,
                     color: Colors.red,
-                    fontWeight: FontWeight.bold,
                   ),
+                  title: const Text(
+                    'مهام رئيس القسم',
+                    style: TextStyle(
+                      color: Colors.red,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    _navigateToService(context, 'مهام رئيس القسم');
+                  },
                 ),
-                onTap: () {
-                  Navigator.of(context).pop();
-                  _navigateToService(context, 'مهام رئيس القسم');
-                },
-              ),
-            ],
-            if (isViceDeanOrDev) ...[
-              const Divider(),
-              ListTile(
-                leading: const Icon(
-                  Icons.admin_panel_settings_outlined,
-                  color: Colors.indigo,
-                ),
-                title: const Text(
-                  'مهام نائب العميد للشؤون الأكاديمية',
-                  style: TextStyle(
+              ],
+              if (isViceDeanOrDev) ...[
+                const Divider(),
+                ListTile(
+                  leading: const Icon(
+                    Icons.admin_panel_settings_outlined,
                     color: Colors.indigo,
-                    fontWeight: FontWeight.bold,
                   ),
-                ),
-                onTap: () {
-                  Navigator.of(context).pop();
-                  _navigateToService(
-                    context,
+                  title: const Text(
                     'مهام نائب العميد للشؤون الأكاديمية',
-                  );
-                },
-              ),
+                    style: TextStyle(
+                      color: Colors.indigo,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    _navigateToService(
+                      context,
+                      'مهام نائب العميد للشؤون الأكاديمية',
+                    );
+                  },
+                ),
+              ],
             ],
             const Spacer(),
             const Divider(),
@@ -867,6 +902,18 @@ class _TeacherHomeViewState extends State<TeacherHomeView> {
   // التنقل إلى الخدمات (مؤقت حالياً لعرض رسالة تنبيه)
   void _navigateToService(BuildContext context, String serviceName) {
     ScaffoldMessenger.of(context).clearSnackBars();
+    if (serviceName == 'باركود التحضير') {
+      Navigator.of(
+        context,
+      ).push(MaterialPageRoute(builder: (_) => const AttendanceBarcodeView()));
+      return;
+    }
+    if (serviceName == 'مسح باركود التحضير') {
+      Navigator.of(
+        context,
+      ).push(MaterialPageRoute(builder: (_) => const StudentQrScanEntryView()));
+      return;
+    }
     if (serviceName == 'مهام رئيس القسم') {
       Navigator.of(
         context,

@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:student_attendance_system/features/vice_dean_for_academic _affairs/view_assignments/view_assignments_view_model.dart';
@@ -24,10 +26,26 @@ class _ViewAssignmentsBody extends StatefulWidget {
 class _ViewAssignmentsBodyState extends State<_ViewAssignmentsBody> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final viewModel = Provider.of<ViewAssignmentsViewModel>(context, listen: false);
+      _connectivitySubscription = Connectivity().onConnectivityChanged.listen((List<ConnectivityResult> results) {
+        final hasConnection = results.any((result) => result != ConnectivityResult.none);
+        if (hasConnection) {
+          viewModel.autoSync();
+        }
+      });
+    });
+  }
 
   @override
   void dispose() {
     _searchController.dispose();
+    _connectivitySubscription?.cancel();
     super.dispose();
   }
 
