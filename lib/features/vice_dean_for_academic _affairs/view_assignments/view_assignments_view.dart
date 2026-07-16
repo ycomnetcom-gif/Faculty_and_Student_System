@@ -309,6 +309,8 @@ class _ViewAssignmentsBodyState extends State<_ViewAssignmentsBody> {
     final teacherController = TextEditingController(text: item.teacherName);
     final teacherFocusNode = FocusNode();
     String selectedTeacherUid = item.teacherUid;
+    String? selectedDeptId = item.departmentId;
+    int? selectedLevel = item.level;
 
     showDialog(
       context: context,
@@ -316,6 +318,24 @@ class _ViewAssignmentsBodyState extends State<_ViewAssignmentsBody> {
         final theme = Theme.of(ctx);
         return StatefulBuilder(
           builder: (context, setDialogState) {
+            // التحقق من صحة المستوى المختار مع التخصص الحالي لمنع أي خطأ assertion
+            if (selectedDeptId != null) {
+              final deptMap = vm.departments.firstWhere(
+                (d) => ((d['firestore_id'] != null && d['firestore_id'].toString().isNotEmpty)
+                        ? d['firestore_id'].toString()
+                        : d['id'].toString()) == selectedDeptId,
+                orElse: () => <String, dynamic>{},
+              );
+              if (deptMap.isNotEmpty) {
+                final int maxLvl = deptMap['levels_count'] is int ? deptMap['levels_count'] : 4;
+                if (selectedLevel != null && selectedLevel! > maxLvl) {
+                  selectedLevel = null;
+                }
+              }
+            } else {
+              selectedLevel = null;
+            }
+
             return AlertDialog(
               title: Row(
                 children: [
@@ -382,13 +402,13 @@ class _ViewAssignmentsBodyState extends State<_ViewAssignmentsBody> {
                             ),
                             validator: (value) {
                               if (value == null || value.trim().isEmpty) {
-                                return 'الرجاء تحديد المعلم المسؤول';
+                                  return 'الرجاء تحديد المعلم المسؤول';
                               }
                               final matchExists = vm.teachers.any(
                                 (t) => (t['name'] as String? ?? '').trim().toLowerCase() == value.trim().toLowerCase()
                               );
                               if (!matchExists) {
-                                    return 'الرجاء اختيار معلم صحيح من القائمة المنسدلة';
+                                return 'الرجاء اختيار معلم صحيح من القائمة المنسدلة';
                               }
                               return null;
                             },
@@ -459,6 +479,84 @@ class _ViewAssignmentsBodyState extends State<_ViewAssignmentsBody> {
                       ),
                       const SizedBox(height: 16),
 
+                      // التخصص/القسم
+                      DropdownButtonFormField<String>(
+                        value: selectedDeptId,
+                        isExpanded: true,
+                        decoration: InputDecoration(
+                          labelText: 'التخصص/القسم',
+                          prefixIcon: const Icon(Icons.school_outlined),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        items: vm.departments.map((dept) {
+                          final String idVal = (dept['firestore_id'] != null && dept['firestore_id'].toString().isNotEmpty)
+                              ? dept['firestore_id'].toString()
+                              : dept['id'].toString();
+                          return DropdownMenuItem<String>(
+                            value: idVal,
+                            child: Text(
+                              dept['name'] ?? '',
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          );
+                        }).toList(),
+                        onChanged: (val) {
+                          setDialogState(() {
+                            selectedDeptId = val;
+                            // إعادة تعيين المستوى الدراسي إذا أصبح خارج حدود مستويات القسم الجديد
+                            final deptMap = vm.departments.firstWhere(
+                              (d) => ((d['firestore_id'] != null && d['firestore_id'].toString().isNotEmpty)
+                                      ? d['firestore_id'].toString()
+                                      : d['id'].toString()) == val,
+                              orElse: () => <String, dynamic>{},
+                            );
+                            final int maxLvl = deptMap['levels_count'] is int ? deptMap['levels_count'] : 4;
+                            if (selectedLevel != null && selectedLevel! > maxLvl) {
+                              selectedLevel = null;
+                            }
+                          });
+                        },
+                      ),
+                      const SizedBox(height: 16),
+
+                      // المستوى الدراسي
+                      DropdownButtonFormField<int>(
+                        value: selectedLevel,
+                        decoration: InputDecoration(
+                          labelText: 'المستوى الدراسي',
+                          prefixIcon: const Icon(Icons.class_outlined),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        items: () {
+                          if (selectedDeptId == null) return <DropdownMenuItem<int>>[];
+                          final deptMap = vm.departments.firstWhere(
+                            (d) => ((d['firestore_id'] != null && d['firestore_id'].toString().isNotEmpty)
+                                    ? d['firestore_id'].toString()
+                                    : d['id'].toString()) == selectedDeptId,
+                            orElse: () => <String, dynamic>{},
+                          );
+                          final int maxLvl = deptMap['levels_count'] is int ? deptMap['levels_count'] : 4;
+                          return List.generate(maxLvl, (i) => i + 1).map((lvl) {
+                            return DropdownMenuItem<int>(
+                              value: lvl,
+                              child: Text('مستوى $lvl'),
+                            );
+                          }).toList();
+                        }(),
+                        onChanged: selectedDeptId == null
+                            ? null
+                            : (val) {
+                                setDialogState(() {
+                                  selectedLevel = val;
+                                });
+                              },
+                      ),
+                      const SizedBox(height: 16),
+
                       // القاعة
                       TextFormField(
                         controller: roomController,
@@ -524,6 +622,8 @@ class _ViewAssignmentsBodyState extends State<_ViewAssignmentsBody> {
                               teacherUid: selectedTeacherUid,
                               room: roomController.text,
                               studentGroups: groupsList,
+                              departmentId: selectedDeptId,
+                              level: selectedLevel,
                             );
                             Navigator.of(ctx).pop();
                           }
@@ -637,6 +737,24 @@ class _AssignmentCard extends StatelessWidget {
               const SizedBox(width: 8),
               Text(
                 assignment.teacherName,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurface.withOpacity(0.7),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          // التخصص والمستوى
+          Row(
+            children: [
+              Icon(
+                Icons.school_outlined,
+                size: 16,
+                color: theme.colorScheme.onSurface.withOpacity(0.55),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'التخصص: ${assignment.departmentName} - مستوى: ${assignment.level ?? "غير محدد"}',
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: theme.colorScheme.onSurface.withOpacity(0.7),
                 ),

@@ -569,7 +569,7 @@ class _TeacherHomeViewState extends State<TeacherHomeView> {
       ]);
 
       if (profile != null &&
-          (profile.academicTitle == 'رئيس قسم' ||
+          (profile.academicTitle.contains('رئيس قسم') ||
               profile.academicTitle == 'مطور' ||
               profile.academicTitle.toLowerCase() == 'developer' ||
               profile.academicTitle.toLowerCase() == 'admin')) {
@@ -585,8 +585,7 @@ class _TeacherHomeViewState extends State<TeacherHomeView> {
       }
 
       if (profile != null &&
-          (profile.academicTitle == 'نائب العميد للشؤون الأكاديمية' ||
-              profile.academicTitle == 'نائب العميد' ||
+          (profile.academicTitle.contains('نائب العميد') ||
               profile.academicTitle.toLowerCase() == 'vice_dean_academic' ||
               profile.academicTitle.toLowerCase() == 'vice_dean' ||
               profile.academicTitle == 'مطور' ||
@@ -715,15 +714,14 @@ class _TeacherHomeViewState extends State<TeacherHomeView> {
 
     final isHeadOrDev =
         profile != null &&
-        (profile.academicTitle == 'رئيس قسم' ||
+        (profile.academicTitle.contains('رئيس قسم') ||
             profile.academicTitle == 'مطور' ||
             profile.academicTitle.toLowerCase() == 'developer' ||
             profile.academicTitle.toLowerCase() == 'admin');
 
     final isViceDeanOrDev =
         profile != null &&
-        (profile.academicTitle == 'نائب العميد للشؤون الأكاديمية' ||
-            profile.academicTitle == 'نائب العميد' ||
+        (profile.academicTitle.contains('نائب العميد') ||
             profile.academicTitle.toLowerCase() == 'vice_dean_academic' ||
             profile.academicTitle.toLowerCase() == 'vice_dean' ||
             profile.academicTitle == 'مطور' ||

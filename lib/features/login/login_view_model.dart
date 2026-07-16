@@ -99,7 +99,7 @@ class LoginViewModel extends ChangeNotifier {
 
             // 4. حفظ البيانات في قاعدة بيانات SQLite المحلية حسب الدور
             final role = data['role']?.toString() ?? 'طالب';
-            if (role == 'عضو هيئة تدريس' || role == 'رئيس قسم') {
+            if (userType == 'faculty' || role == 'عضو هيئة تدريس' || role.contains('رئيس قسم') || role.contains('نائب العميد')) {
               await DatabaseHelper.instance.saveFacultyUser({
                 'id': data['id']?.toString() ?? user.uid,
                 'name': data['name']?.toString() ?? '',

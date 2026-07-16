@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:student_attendance_system/features/vice_dean_for_academic _affairs/departments/department_model.dart';
 import 'package:student_attendance_system/features/vice_dean_for_academic _affairs/timetable_import/timetable_import_view_model.dart';
 
 class TimetableImportView extends StatelessWidget {
@@ -168,13 +169,12 @@ class _ManualMappingStep extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    // نستخدم CustomScrollView بدل Column+Expanded لتجنب مشكلة الارتفاع غير المحدد
     return CustomScrollView(
       slivers: [
         // Header
         SliverToBoxAdapter(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+            padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -198,13 +198,13 @@ class _ManualMappingStep extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'ربط المعلمين يدوياً',
+                            'مطابقة البيانات يدوياً',
                             style: theme.textTheme.titleLarge?.copyWith(
                               fontWeight: FontWeight.bold,
                             ),
                           ),
                           Text(
-                            'الأسماء التالية لم تُطابَق تلقائياً، يُرجى ربطها.',
+                            'يرجى إكمال ربط المعلمين والمجموعات بالتخصصات والمستويات المقابلة.',
                             style: theme.textTheme.bodySmall?.copyWith(
                               color: theme.colorScheme.onSurface.withOpacity(
                                 0.55,
@@ -225,28 +225,100 @@ class _ManualMappingStep extends StatelessWidget {
           ),
         ),
 
-        // Mapping cards
-        SliverList.separated(
-          itemCount: vm.unmappedTeacherNames.length,
-          separatorBuilder: (_, __) => const SizedBox(height: 12),
-          itemBuilder: (context, i) {
-            final rawName = vm.unmappedTeacherNames[i];
-            return Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: _TeacherMappingCard(
-                rawName: rawName,
-                currentUid: vm.manualMappings[rawName],
-                teachers: vm.registeredTeachers,
-                onChanged: (uid) => vm.setManualMapping(rawName, uid),
+        // Section 1: Teacher Mapping
+        if (vm.unmappedTeacherNames.isNotEmpty) ...[
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.person_rounded,
+                    color: theme.colorScheme.primary,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'ربط المعلمين يدوياً (${vm.unmappedTeacherNames.length})',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: theme.colorScheme.primary,
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            );
-          },
-        ),
+            ),
+          ),
+          SliverList.separated(
+            itemCount: vm.unmappedTeacherNames.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 12),
+            itemBuilder: (context, i) {
+              final rawName = vm.unmappedTeacherNames[i];
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: _TeacherMappingCard(
+                  rawName: rawName,
+                  currentUid: vm.manualMappings[rawName],
+                  teachers: vm.registeredTeachers,
+                  onChanged: (uid) => vm.setManualMapping(rawName, uid),
+                ),
+              );
+            },
+          ),
+        ],
+
+        // Section 2: Group to Dept/Level Mapping
+        if (vm.unmappedGroupNames.isNotEmpty) ...[
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(24, 24, 24, 12),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.class_rounded,
+                    color: theme.colorScheme.primary,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'ربط المجموعات بالتخصصات والمستويات يدوياً (${vm.unmappedGroupNames.length})',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: theme.colorScheme.primary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          SliverList.separated(
+            itemCount: vm.unmappedGroupNames.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 12),
+            itemBuilder: (context, i) {
+              final groupName = vm.unmappedGroupNames[i];
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: _GroupMappingCard(
+                  groupName: groupName,
+                  currentDeptId: vm.manualDeptMappings[groupName],
+                  currentLevel: vm.manualLevelMappings[groupName],
+                  departments: vm.departments,
+                  onChanged: (deptId, level) =>
+                      vm.setManualGroupMapping(groupName, deptId, level),
+                ),
+              );
+            },
+          ),
+        ],
 
         // Save button (last item)
         SliverToBoxAdapter(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+            padding: const EdgeInsets.fromLTRB(24, 32, 24, 24),
             child: SizedBox(
               width: double.infinity,
               height: 52,
@@ -274,6 +346,257 @@ class _ManualMappingStep extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _GroupMappingCard extends StatefulWidget {
+  final String groupName;
+  final String? currentDeptId;
+  final int? currentLevel;
+  final List<Department> departments;
+  final Function(String deptId, int level) onChanged;
+
+  const _GroupMappingCard({
+    required this.groupName,
+    required this.currentDeptId,
+    required this.currentLevel,
+    required this.departments,
+    required this.onChanged,
+  });
+
+  @override
+  State<_GroupMappingCard> createState() => _GroupMappingCardState();
+}
+
+class _GroupMappingCardState extends State<_GroupMappingCard> {
+  String? selectedDeptId;
+  int? selectedLevel;
+
+  @override
+  void initState() {
+    super.initState();
+    selectedDeptId = widget.currentDeptId;
+    selectedLevel = widget.currentLevel;
+    _sanitizeSelectedLevel();
+  }
+
+  @override
+  void didUpdateWidget(covariant _GroupMappingCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.currentDeptId != oldWidget.currentDeptId) {
+      selectedDeptId = widget.currentDeptId;
+    }
+    if (widget.currentLevel != oldWidget.currentLevel) {
+      selectedLevel = widget.currentLevel;
+    }
+    _sanitizeSelectedLevel();
+  }
+
+  void _sanitizeSelectedLevel() {
+    if (selectedDeptId != null) {
+      Department? selectedDept;
+      for (final d in widget.departments) {
+        final idVal = (d.firestoreId != null && d.firestoreId!.isNotEmpty)
+            ? d.firestoreId!
+            : d.id.toString();
+        if (idVal == selectedDeptId) {
+          selectedDept = d;
+          break;
+        }
+      }
+      if (selectedDept != null) {
+        if (selectedLevel != null &&
+            selectedLevel! > selectedDept.levelsCount) {
+          selectedLevel = null;
+        }
+      }
+    } else {
+      selectedLevel = null;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    // إيجاد القسم المحدد حالياً
+    Department? selectedDept;
+    if (selectedDeptId != null) {
+      for (final d in widget.departments) {
+        final idVal = (d.firestoreId != null && d.firestoreId!.isNotEmpty)
+            ? d.firestoreId!
+            : d.id.toString();
+        if (idVal == selectedDeptId) {
+          selectedDept = d;
+          break;
+        }
+      }
+    }
+
+    final int levelsCount = selectedDept != null ? selectedDept.levelsCount : 4;
+    final List<int> levelOptions = List.generate(
+      levelsCount,
+      (index) => index + 1,
+    );
+
+    // تأكيد إضافي لصحة المستوى المختار لمنع أي خطأ assertion في DropdownButtonFormField
+    if (selectedLevel != null && !levelOptions.contains(selectedLevel)) {
+      selectedLevel = null;
+    }
+
+    final bool isMapped = selectedDeptId != null && selectedLevel != null;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface.withOpacity(0.9),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+        border: Border.all(
+          color: isMapped
+              ? Colors.green.withOpacity(0.4)
+              : Colors.orange.withOpacity(0.4),
+          width: 1.5,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                isMapped
+                    ? Icons.check_circle_outline_rounded
+                    : Icons.warning_amber_rounded,
+                color: isMapped ? Colors.green : Colors.orange,
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'من الـ CSV: ${widget.groupName}',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (widget.departments.isEmpty)
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.orange.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Text(
+                'لا توجد تخصصات/أقسام مسجلة في النظام بعد.',
+                style: TextStyle(color: Colors.orange),
+              ),
+            )
+          else ...[
+            DropdownButtonFormField<String>(
+              value: selectedDeptId,
+              isExpanded: true,
+              decoration: InputDecoration(
+                labelText: 'التخصص المقابل',
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 12,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                filled: true,
+                fillColor: theme.colorScheme.surfaceContainerHighest
+                    .withOpacity(0.4),
+              ),
+              items: widget.departments.map((d) {
+                final idVal =
+                    (d.firestoreId != null && d.firestoreId!.isNotEmpty)
+                    ? d.firestoreId!
+                    : d.id.toString();
+                return DropdownMenuItem<String>(
+                  value: idVal,
+                  child: Text(
+                    d.name,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 13),
+                  ),
+                );
+              }).toList(),
+              onChanged: (id) {
+                if (id != null) {
+                  setState(() {
+                    selectedDeptId = id;
+                    // إعادة تعيين المستوى إذا كان أكبر من نطاق مستويات القسم الجديد
+                    final newDept = widget.departments.firstWhere(
+                      (d) =>
+                          ((d.firestoreId != null && d.firestoreId!.isNotEmpty)
+                              ? d.firestoreId!
+                              : d.id.toString()) ==
+                          id,
+                    );
+                    if (selectedLevel != null &&
+                        selectedLevel! > newDept.levelsCount) {
+                      selectedLevel = null;
+                    }
+                  });
+                  if (selectedLevel != null) {
+                    widget.onChanged(id, selectedLevel!);
+                  }
+                }
+              },
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<int>(
+              value: selectedLevel,
+              isExpanded: true,
+              decoration: InputDecoration(
+                labelText: 'المستوى',
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 12,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                filled: true,
+                fillColor: theme.colorScheme.surfaceContainerHighest
+                    .withOpacity(0.4),
+              ),
+              items: levelOptions.map((lvl) {
+                return DropdownMenuItem<int>(
+                  value: lvl,
+                  child: Text(
+                    'مستوى $lvl',
+                    style: const TextStyle(fontSize: 13),
+                  ),
+                );
+              }).toList(),
+              onChanged: selectedDeptId == null
+                  ? null
+                  : (lvl) {
+                      if (lvl != null) {
+                        setState(() {
+                          selectedLevel = lvl;
+                        });
+                        widget.onChanged(selectedDeptId!, lvl);
+                      }
+                    },
+            ),
+          ],
+        ],
+      ),
     );
   }
 }
@@ -417,11 +740,8 @@ class _DoneStep extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
-          Text(
-            'ستتم مزامنة البيانات مع الخادم فور توفّر الاتصال.',
-            textAlign: TextAlign.center,
-            style: theme.textTheme.bodySmall?.copyWith(color: Colors.orange),
-          ),
+          const SizedBox(height: 8),
+
           const SizedBox(height: 36),
           Wrap(
             alignment: WrapAlignment.center,

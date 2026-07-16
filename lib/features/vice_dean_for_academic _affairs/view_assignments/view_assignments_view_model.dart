@@ -12,6 +12,9 @@ class AssignedCourse {
   final String teacherName;
   final List<String> studentGroups;
   final String room;
+  final String? departmentId;
+  final String? departmentName;
+  final int? level;
   final int syncStatus;
 
   AssignedCourse({
@@ -21,6 +24,9 @@ class AssignedCourse {
     required this.teacherName,
     required this.studentGroups,
     required this.room,
+    this.departmentId,
+    this.departmentName,
+    this.level,
     required this.syncStatus,
   });
 }
@@ -31,6 +37,9 @@ class ViewAssignmentsViewModel extends ChangeNotifier {
 
   List<Map<String, dynamic>> _teachers = [];
   List<Map<String, dynamic>> get teachers => _teachers;
+
+  List<Map<String, dynamic>> _departments = [];
+  List<Map<String, dynamic>> get departments => _departments;
 
   bool _isLoading = false;
   bool get isLoading => _isLoading;
@@ -49,7 +58,7 @@ class ViewAssignmentsViewModel extends ChangeNotifier {
     return results.any((r) => r != ConnectivityResult.none);
   }
 
-  /// تحميل جميع التعيينات مع أسماء المعلمين (من SQLite فقط، بدون فايربيس)
+  /// تحميل جميع التعيينات مع أسماء المعلمين والأقسام (من SQLite فقط، بدون فايربيس)
   Future<void> loadAssignments() async {
     _isLoading = true;
     _message = null;
@@ -58,20 +67,30 @@ class ViewAssignmentsViewModel extends ChangeNotifier {
     try {
       final db = await DatabaseHelper.instance.database;
 
-      // جلب قائمة المعلمين لاستخدامها في نافذة التعديل
+      // 1. جلب قائمة المعلمين لاستخدامها في نافذة التعديل
       _teachers = await db.query(
         'faculty_users',
         columns: ['id', 'name', 'email', 'role'],
         orderBy: 'name ASC',
       );
 
-      // جلب التعيينات مع اسم المعلم (استبعاد المحذوفة sync_status=2)
+      // 2. جلب قائمة الأقسام لاستخدامها في شاشة تعديل التعيين
+      _departments = await db.query(
+        'departments',
+        where: 'sync != 2',
+        orderBy: 'name ASC',
+      );
+
+      // 3. جلب التعيينات مع اسم المعلم واسم القسم (استبعاد المحذوفة sync_status=2)
       final List<Map<String, dynamic>> rows = await db.rawQuery('''
         SELECT ca.id, ca.subject_name, ca.student_groups, ca.room, ca.sync_status, ca.teacher_uid,
-               COALESCE(fu.name, u.name, 'معلم غير معروف') as teacher_name
+               ca.department_id, ca.level,
+               COALESCE(fu.name, u.name, 'معلم غير معروف') as teacher_name,
+               d.name as department_name
         FROM course_assignments ca
         LEFT JOIN faculty_users fu ON ca.teacher_uid = fu.id
         LEFT JOIN users u ON ca.teacher_uid = u.id
+        LEFT JOIN departments d ON ca.department_id = d.firestore_id OR ca.department_id = CAST(d.id AS TEXT)
         WHERE ca.sync_status != 2
         ORDER BY ca.subject_name ASC
       ''');
@@ -92,6 +111,9 @@ class ViewAssignmentsViewModel extends ChangeNotifier {
           teacherName: row['teacher_name'] as String? ?? 'معلم غير معروف',
           studentGroups: groups,
           room: row['room'] as String? ?? '',
+          departmentId: row['department_id'] as String?,
+          departmentName: row['department_name'] as String? ?? 'غير محدد',
+          level: row['level'] as int?,
           syncStatus: row['sync_status'] as int? ?? 0,
         );
       }).toList();
@@ -117,6 +139,8 @@ class ViewAssignmentsViewModel extends ChangeNotifier {
     required String teacherUid,
     required String room,
     required List<String> studentGroups,
+    String? departmentId,
+    int? level,
   }) async {
     _isLoading = true;
     _message = null;
@@ -134,6 +158,8 @@ class ViewAssignmentsViewModel extends ChangeNotifier {
           'teacher_uid': teacherUid,
           'room': room.trim(),
           'student_groups': studentGroups.map((g) => g.trim()).toList(),
+          'department_id': departmentId,
+          'level': level,
           'updated_at': FieldValue.serverTimestamp(),
         }, SetOptions(merge: true));
 
@@ -145,6 +171,8 @@ class ViewAssignmentsViewModel extends ChangeNotifier {
             'teacher_uid': teacherUid,
             'room': room.trim(),
             'student_groups': groupsJson,
+            'department_id': departmentId,
+            'level': level,
             'sync_status': 1,
           },
           where: 'id = ?',
@@ -161,6 +189,8 @@ class ViewAssignmentsViewModel extends ChangeNotifier {
             'teacher_uid': teacherUid,
             'room': room.trim(),
             'student_groups': groupsJson,
+            'department_id': departmentId,
+            'level': level,
             'sync_status': 0,
           },
           where: 'id = ?',

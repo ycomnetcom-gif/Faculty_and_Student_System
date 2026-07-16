@@ -20,6 +20,12 @@ class CourseAssignmentModel {
   /// القاعة الدراسية
   final String room;
 
+  /// معرف القسم/التخصص المرتبط
+  final String? departmentId;
+
+  /// المستوى الدراسي للمادة (مثل 1، 2، 3، 4)
+  final int? level;
+
   /// حالة المزامنة: 0 = معلق، 1 = مزامن
   final int syncStatus;
 
@@ -29,6 +35,8 @@ class CourseAssignmentModel {
     required this.teacherUid,
     required this.studentGroups,
     required this.room,
+    this.departmentId,
+    this.level,
     this.syncStatus = 0,
   });
 
@@ -44,6 +52,8 @@ class CourseAssignmentModel {
       'teacher_uid': teacherUid,
       'student_groups': jsonEncode(studentGroups),
       'room': room,
+      'department_id': departmentId,
+      'level': level,
       'sync_status': syncStatus,
     };
   }
@@ -67,6 +77,8 @@ class CourseAssignmentModel {
       teacherUid: map['teacher_uid'] as String? ?? '',
       studentGroups: groups,
       room: map['room'] as String? ?? '',
+      departmentId: map['department_id'] as String?,
+      level: map['level'] as int?,
       syncStatus: map['sync_status'] as int? ?? 0,
     );
   }
@@ -83,6 +95,8 @@ class CourseAssignmentModel {
       'teacher_uid': teacherUid,
       'student_groups': studentGroups,
       'room': room,
+      'department_id': departmentId,
+      'level': level,
     };
   }
 
@@ -96,6 +110,8 @@ class CourseAssignmentModel {
     String? teacherUid,
     List<String>? studentGroups,
     String? room,
+    String? departmentId,
+    int? level,
     int? syncStatus,
   }) {
     return CourseAssignmentModel(
@@ -104,11 +120,13 @@ class CourseAssignmentModel {
       teacherUid: teacherUid ?? this.teacherUid,
       studentGroups: studentGroups ?? this.studentGroups,
       room: room ?? this.room,
+      departmentId: departmentId ?? this.departmentId,
+      level: level ?? this.level,
       syncStatus: syncStatus ?? this.syncStatus,
     );
   }
 
   @override
   String toString() =>
-      'CourseAssignmentModel(id: $id, subject: $subjectName, teacher: $teacherUid, groups: $studentGroups, room: $room, sync: $syncStatus)';
+      'CourseAssignmentModel(id: $id, subject: $subjectName, teacher: $teacherUid, groups: $studentGroups, room: $room, departmentId: $departmentId, level: $level, sync: $syncStatus)';
 }

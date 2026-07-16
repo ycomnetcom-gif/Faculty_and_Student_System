@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart';
@@ -43,7 +44,7 @@ class DatabaseHelper {
 
     final db = await openDatabase(
       path,
-      version: 12,
+      version: 14,
       onConfigure: (db) async {
         try {
           await db.execute('PRAGMA busy_timeout = 5000;');
@@ -92,7 +93,7 @@ class DatabaseHelper {
       )
     ''');
 
-    // إنشاء جدول الأقسام مع عمود firestore_id و created_at
+    // إنشاء جدول الأقسام مع عمود firestore_id و created_at والحقول الجديدة
     await db.execute('''
       CREATE TABLE departments (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -101,7 +102,11 @@ class DatabaseHelper {
         head_id TEXT NOT NULL,
         head_name TEXT NOT NULL,
         sync INTEGER DEFAULT 0,
-        created_at TEXT
+        created_at TEXT,
+        levels_count INTEGER DEFAULT 4,
+        has_tracks INTEGER DEFAULT 0,
+        tracks TEXT DEFAULT '[]',
+        start_level_for_tracks INTEGER
       )
     ''');
 
@@ -140,7 +145,9 @@ class DatabaseHelper {
         teacher_uid TEXT NOT NULL,
         student_groups TEXT NOT NULL,
         room TEXT,
-        sync_status INTEGER DEFAULT 0
+        sync_status INTEGER DEFAULT 0,
+        department_id TEXT,
+        level INTEGER
       )
     ''');
 
@@ -335,6 +342,32 @@ class DatabaseHelper {
         }
       }
     }
+
+    if (oldVersion < 13) {
+      try {
+        await db.execute('ALTER TABLE departments ADD COLUMN levels_count INTEGER DEFAULT 4');
+        await db.execute('ALTER TABLE departments ADD COLUMN has_tracks INTEGER DEFAULT 0');
+        await db.execute('ALTER TABLE departments ADD COLUMN tracks TEXT DEFAULT \'[]\'');
+        await db.execute('ALTER TABLE departments ADD COLUMN start_level_for_tracks INTEGER');
+        debugPrint(
+          "Database successfully upgraded to version 13 (added levels_count, has_tracks, tracks, and start_level_for_tracks columns to departments).",
+        );
+      } catch (e) {
+        debugPrint("Error upgrading to version 13: $e");
+      }
+    }
+
+    if (oldVersion < 14) {
+      try {
+        await db.execute('ALTER TABLE course_assignments ADD COLUMN department_id TEXT');
+        await db.execute('ALTER TABLE course_assignments ADD COLUMN level INTEGER');
+        debugPrint(
+          "Database successfully upgraded to version 14 (added department_id and level columns to course_assignments).",
+        );
+      } catch (e) {
+        debugPrint("Error upgrading to version 14: $e");
+      }
+    }
   }
 
   // حفظ أو تحديث بيانات مستخدم
@@ -435,6 +468,20 @@ class DatabaseHelper {
     return null;
   }
 
+  // جلب بيانات عضو هيئة التدريس بواسطة المعرف (id)
+  Future<Map<String, dynamic>?> getFacultyUser(String id) async {
+    final db = await instance.database;
+    final maps = await db.query(
+      'faculty_users',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    if (maps.isNotEmpty) {
+      return maps.first;
+    }
+    return null;
+  }
+
   // --- دوال حسابات أعضاء هيئة التدريس (faculty_accounts) ---
 
   Future<int> saveFacultyAccount(
@@ -501,6 +548,10 @@ class DatabaseHelper {
     int sync = 0,
     String? firestoreId,
     String? createdAt,
+    int levelsCount = 4,
+    bool hasTracks = false,
+    List<String> tracks = const [],
+    int? startLevelForTracks,
   }) async {
     final db = await instance.database;
     return await db.insert('departments', {
@@ -510,6 +561,10 @@ class DatabaseHelper {
       'sync': sync,
       'firestore_id': firestoreId,
       'created_at': createdAt ?? DateTime.now().toIso8601String(),
+      'levels_count': levelsCount,
+      'has_tracks': hasTracks ? 1 : 0,
+      'tracks': jsonEncode(tracks),
+      'start_level_for_tracks': startLevelForTracks,
     }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
@@ -521,6 +576,10 @@ class DatabaseHelper {
     String headName, {
     int sync = 0,
     String? firestoreId,
+    int levelsCount = 4,
+    bool hasTracks = false,
+    List<String> tracks = const [],
+    int? startLevelForTracks,
   }) async {
     final db = await instance.database;
     return await db.update(
@@ -531,6 +590,10 @@ class DatabaseHelper {
         'head_name': headName,
         'sync': sync,
         if (firestoreId != null) 'firestore_id': firestoreId,
+        'levels_count': levelsCount,
+        'has_tracks': hasTracks ? 1 : 0,
+        'tracks': jsonEncode(tracks),
+        'start_level_for_tracks': startLevelForTracks,
       },
       where: 'id = ?',
       whereArgs: [localId],
@@ -808,6 +871,18 @@ class DatabaseHelper {
       where: 'registration_id = ?',
       whereArgs: [registrationId],
     );
+  }
+
+  Future<bool> isRegistrationIdExists(String registrationId) async {
+    final db = await instance.database;
+    final maps = await db.query(
+      '"Configure student accounts"',
+      columns: ['registration_id'],
+      where: 'registration_id = ? AND sync != 2',
+      whereArgs: [registrationId],
+      limit: 1,
+    );
+    return maps.isNotEmpty;
   }
 
   Future<bool> isStudentEmailExists(

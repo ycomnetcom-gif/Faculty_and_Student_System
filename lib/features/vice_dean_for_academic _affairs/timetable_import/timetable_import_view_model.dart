@@ -4,9 +4,10 @@ import 'dart:io';
 import 'package:csv/csv.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:sqflite/sqflite.dart';
 import 'package:student_attendance_system/core/database_helper.dart';
 import 'package:student_attendance_system/core/sync_service.dart';
+import 'package:student_attendance_system/features/vice_dean_for_academic _affairs/departments/department_model.dart';
 import 'package:student_attendance_system/features/vice_dean_for_academic _affairs/timetable_import/course_assignment_model.dart';
 import 'package:uuid/uuid.dart';
 
@@ -40,6 +41,66 @@ class NameSanitizer {
 }
 
 // ---------------------------------------------------------------------------
+// Helper – Student Group Parser
+// ---------------------------------------------------------------------------
+
+/// يحلل اسم المجموعة الطلابية لاستخراج التخصص والمستوى الدراسي.
+/// مثال: "تقنية معلومات - مستوى ثالث" -> التخصص: "تقنية معلومات"، المستوى: 3
+class StudentGroupParser {
+  static const Map<String, int> _arabicLevelMap = {
+    'أول': 1,
+    'اول': 1,
+    'الأول': 1,
+    'الاول': 1,
+    'ثاني': 2,
+    'ثانى': 2,
+    'الثاني': 2,
+    'الثانى': 2,
+    'ثالث': 3,
+    'الثالث': 3,
+    'رابع': 4,
+    'الرابع': 4,
+    'خامس': 5,
+    'الخامس': 5,
+  };
+
+  /// يحلل اسم المجموعة ويُرجع خريطة تحتوي على اسم التخصص المقترح ورقم المستوى
+  static Map<String, dynamic> parse(String groupName) {
+    final parts = groupName.split(RegExp(r'[-–/]'));
+    if (parts.isEmpty) {
+      return {'departmentName': groupName.trim(), 'level': null};
+    }
+
+    final deptPart = parts[0].trim();
+    if (parts.length < 2) {
+      return {'departmentName': deptPart, 'level': null};
+    }
+
+    final levelPart = parts[1].trim();
+    int? level;
+
+    // البحث عن أرقام مباشرة (مثال: "مستوى 3" أو "مستوى 2")
+    final numMatch = RegExp(r'\d+').firstMatch(levelPart);
+    if (numMatch != null) {
+      level = int.tryParse(numMatch.group(0)!);
+    } else {
+      // البحث عن الكلمات العربية المقابلة للمستوى
+      for (final entry in _arabicLevelMap.entries) {
+        if (levelPart.contains(entry.key)) {
+          level = entry.value;
+          break;
+        }
+      }
+    }
+
+    return {
+      'departmentName': deptPart,
+      'level': level,
+    };
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Data class – represents one parsed CSV row (after deduplication)
 // ---------------------------------------------------------------------------
 
@@ -66,7 +127,7 @@ enum ImportStep {
   /// الحالة الابتدائية: لم يُختر ملف بعد
   idle,
 
-  /// هناك أسماء معلمين تحتاج ربطاً يدوياً
+  /// هناك أسماء معلمين أو مجموعات تحتاج ربطاً يدوياً
   manualMapping,
 
   /// اكتملت الربطات وأصبح الحفظ ممكناً
@@ -107,30 +168,53 @@ class TimetableImportViewModel extends ChangeNotifier {
   List<Map<String, dynamic>> get registeredTeachers =>
       List.unmodifiable(_registeredTeachers);
 
-  /// الأسماء التي لم يُعثر لها على تطابق تلقائي.
+  /// جميع الأقسام المسجلة في النظام (مُسترجَعون من SQLite).
+  List<Department> _departments = [];
+  List<Department> get departments => List.unmodifiable(_departments);
+
+  /// الأسماء التي لم يُعثر لها على تطابق تلقائي للمعلمين.
   List<String> _unmappedTeacherNames = [];
   List<String> get unmappedTeacherNames =>
       List.unmodifiable(_unmappedTeacherNames);
 
-  /// خريطة التطابق التلقائي: rawName → teacherUid
+  /// المجموعات التي لم يُعثر لها على تطابق تلقائي مع التخصصات أو المستويات.
+  List<String> _unmappedGroupNames = [];
+  List<String> get unmappedGroupNames =>
+      List.unmodifiable(_unmappedGroupNames);
+
+  /// خريطة التطابق التلقائي للمعلمين: rawTeacherName → teacherUid
   final Map<String, String> _autoMappings = {};
 
-  /// خريطة الربط اليدوي (كاش): rawName → teacherUid
-  /// تُحفظ طوال دورة حياة الـ ViewModel لتجنّب إعادة السؤال.
+  /// خريطة التطابق التلقائي للمجموعات إلى الأقسام: groupName → departmentFirestoreId
+  final Map<String, String> _autoDeptMappings = {};
+
+  /// خريطة التطابق التلقائي للمجموعات إلى المستويات: groupName → levelNumber
+  final Map<String, int> _autoLevelMappings = {};
+
+  /// خريطة الربط اليدوي للمعلمين: rawTeacherName → teacherUid
   final Map<String, String> _manualMappings = {};
   Map<String, String> get manualMappings => Map.unmodifiable(_manualMappings);
+
+  /// خريطة الربط اليدوي للمجموعات إلى الأقسام: groupName → departmentFirestoreId
+  final Map<String, String> _manualDeptMappings = {};
+  Map<String, String> get manualDeptMappings => Map.unmodifiable(_manualDeptMappings);
+
+  /// خريطة الربط اليدوي للمجموعات إلى المستويات: groupName → levelNumber
+  final Map<String, int> _manualLevelMappings = {};
+  Map<String, int> get manualLevelMappings => Map.unmodifiable(_manualLevelMappings);
 
   ImportStep _currentStep = ImportStep.idle;
   ImportStep get currentStep => _currentStep;
 
   // ----------------------------- Public API --------------------------------
 
-  /// يُحضّر قائمة المعلمين المسجلين من SQLite عند فتح الشاشة.
-  /// الأدوار المعتمدة في النظام: "عضو هيئة تدريس"، "رئيس قسم"، "نائب العميد للشؤون الأكاديمية".
+  /// يُحضّر قائمة المعلمين والأقسام المسجلين من SQLite عند فتح الشاشة.
   Future<void> loadRegisteredTeachers() async {
     try {
       final db = await DatabaseHelper.instance.database;
-      final rows = await db.rawQuery(
+      
+      // 1. جلب المعلمين
+      final teacherRows = await db.rawQuery(
         '''
         SELECT id, name FROM faculty_users
         WHERE role = 'عضو هيئة تدريس'
@@ -144,21 +228,29 @@ class TimetableImportViewModel extends ChangeNotifier {
         ORDER BY name ASC
         ''',
       );
-      _registeredTeachers = rows;
+      _registeredTeachers = teacherRows;
+
+      // 2. جلب الأقسام
+      final deptRows = await db.query('departments', where: 'sync != 2');
+      _departments = deptRows.map((r) => Department.fromMap(r)).toList();
+
       notifyListeners();
     } catch (e) {
-      debugPrint('TimetableImportVM: Error loading teachers: $e');
+      debugPrint('TimetableImportVM: Error loading initial data: $e');
     }
   }
 
-  /// يفتح نافذة اختيار الملف، يقرأ محتوى CSV، يحلّله، ويُطابق أسماء المعلمين.
+  /// يفتح نافذة اختيار الملف، يقرأ محتوى CSV، يحلّله، ويُطابق المعلمين والمجموعات تلقائياً.
   Future<void> pickAndParseFile() async {
     _clearMessages();
     _isLoading = true;
     _currentStep = ImportStep.idle;
     _parsedRows = [];
     _unmappedTeacherNames = [];
+    _unmappedGroupNames = [];
     _autoMappings.clear();
+    _autoDeptMappings.clear();
+    _autoLevelMappings.clear();
     notifyListeners();
 
     try {
@@ -181,13 +273,10 @@ class TimetableImportViewModel extends ChangeNotifier {
       // 2. قراءة محتوى الملف مع فك تشفير UTF-8 بشكل صحيح
       final String csvContent;
       if (pickedFile.bytes != null) {
-        // Web – الملف متوفر كـ bytes مباشرة
         csvContent = utf8.decode(pickedFile.bytes!, allowMalformed: true);
       } else if (pickedFile.path != null) {
-        // Desktop (Windows/Linux/macOS)
         final file = File(pickedFile.path!);
         final bytes = await file.readAsBytes();
-        // utf8.decode بدلاً من String.fromCharCodes لتجنب تشويه الأحرف العربية
         csvContent = utf8.decode(bytes, allowMalformed: true);
       } else {
         throw Exception('لا يمكن قراءة الملف: مسار أو بيانات غير متاحة.');
@@ -203,7 +292,7 @@ class TimetableImportViewModel extends ChangeNotifier {
         throw Exception('الملف فارغ أو غير صالح.');
       }
 
-      // 4. الكشف عن رؤوس الأعمدة (case-insensitive, trim)
+      // 4. الكشف عن رؤوس الأعمدة
       final headers = csvTable.first
           .map((h) => h.toString().trim().toLowerCase())
           .toList();
@@ -216,11 +305,11 @@ class TimetableImportViewModel extends ChangeNotifier {
       if (subjectIdx == -1 || teacherIdx == -1 || groupsIdx == -1) {
         throw Exception(
           'تعذّر العثور على أعمدة مطلوبة.\n'
-          'تأكد من وجود: Subject, Teachers, Student Sets.',
+          'تأكد من وجود الأعمدة: Subject, Teachers, Student Sets.',
         );
       }
 
-      // 5. استخراج الصفوف وإزالة التكرار (subject + teacher)
+      // 5. استخراج الصفوف وإزالة التكرار مع تقسيم المجموعات المنفصلة بـ +
       final seen = <String>{};
       final List<TimetableRow> rows = [];
 
@@ -238,23 +327,25 @@ class TimetableImportViewModel extends ChangeNotifier {
 
         if (subject.isEmpty || rawTeacher.isEmpty) continue;
 
-        final dedupeKey = '$subject|$rawTeacher';
-        if (seen.contains(dedupeKey)) continue;
-        seen.add(dedupeKey);
-
-        // تقسيم المجموعات على علامة +
+        // تقسيم المجموعات على علامة + (لمطابقة كل مجموعة بتخصص ومستوى)
         final groups = rawGroups
             .split('+')
             .map((g) => g.trim())
             .where((g) => g.isNotEmpty)
             .toList();
 
-        rows.add(TimetableRow(
-          rawTeacherName: rawTeacher,
-          subjectName: subject,
-          studentGroups: groups,
-          room: room,
-        ));
+        for (final groupName in groups) {
+          final dedupeKey = '$subject|$rawTeacher|$groupName';
+          if (seen.contains(dedupeKey)) continue;
+          seen.add(dedupeKey);
+
+          rows.add(TimetableRow(
+            rawTeacherName: rawTeacher,
+            subjectName: subject,
+            studentGroups: [groupName],
+            room: room,
+          ));
+        }
       }
 
       if (rows.isEmpty) {
@@ -263,11 +354,12 @@ class TimetableImportViewModel extends ChangeNotifier {
 
       _parsedRows = rows;
 
-      // 6. مطابقة الأسماء تلقائياً
+      // 6. مطابقة الأسماء تلقائياً للأساتذة والمجموعات
       _matchTeacherNames();
+      _matchGroups();
 
       // 7. تحديد الخطوة التالية
-      _currentStep = _unmappedTeacherNames.isEmpty
+      _currentStep = (_unmappedTeacherNames.isEmpty && _unmappedGroupNames.isEmpty)
           ? ImportStep.readyToSave
           : ImportStep.manualMapping;
     } catch (e) {
@@ -281,23 +373,33 @@ class TimetableImportViewModel extends ChangeNotifier {
   }
 
   /// يُعيّن نائب العميد معلماً يدوياً لاسم غير معروف.
-  /// يُخزَّن هذا الربط في الذاكرة المؤقتة (Cache).
   void setManualMapping(String rawTeacherName, String teacherUid) {
     _manualMappings[rawTeacherName] = teacherUid;
     notifyListeners();
   }
 
-  /// يتحقق من اكتمال جميع الربطات اليدوية.
+  /// يُعيّن نائب العميد تخصصاً ومستوى يدوياً لمجموعة غير معروفة.
+  void setManualGroupMapping(String groupName, String departmentId, int level) {
+    _manualDeptMappings[groupName] = departmentId;
+    _manualLevelMappings[groupName] = level;
+    notifyListeners();
+  }
+
+  /// يتحقق من اكتمال جميع الربطات اليدوية (المعلمين والمجموعات).
   bool get isManualMappingComplete {
-    return _unmappedTeacherNames.every(
+    final teachersOk = _unmappedTeacherNames.every(
       (name) => _manualMappings.containsKey(name),
     );
+    final groupsOk = _unmappedGroupNames.every(
+      (name) => _manualDeptMappings.containsKey(name) && _manualLevelMappings.containsKey(name),
+    );
+    return teachersOk && groupsOk;
   }
 
   /// يحفظ جميع التعيينات في SQLite بـ sync_status = 0 (Offline-First) ثم يحاول رفعها إلى Firestore.
   Future<void> saveAssignments() async {
-    if (_unmappedTeacherNames.isNotEmpty && !isManualMappingComplete) {
-      _errorMessage = 'يرجى ربط جميع المعلمين غير المعروفين قبل الحفظ.';
+    if ((_unmappedTeacherNames.isNotEmpty || _unmappedGroupNames.isNotEmpty) && !isManualMappingComplete) {
+      _errorMessage = 'يرجى ربط جميع المعلمين والمجموعات غير المطابقة قبل الحفظ.';
       notifyListeners();
       return;
     }
@@ -310,22 +412,32 @@ class TimetableImportViewModel extends ChangeNotifier {
       final db   = await DatabaseHelper.instance.database;
       final uuid = const Uuid();
 
-      // بناء الخريطة النهائية: rawName → uid
-      final Map<String, String> finalMapping = {
+      // بناء الخرائط النهائية للربط
+      final Map<String, String> finalTeacherMapping = {
         ..._autoMappings,
         ..._manualMappings,
+      };
+
+      final Map<String, String> finalDeptMapping = {
+        ..._autoDeptMappings,
+        ..._manualDeptMappings,
+      };
+
+      final Map<String, int> finalLevelMapping = {
+        ..._autoLevelMappings,
+        ..._manualLevelMappings,
       };
 
       int savedCount = 0;
 
       for (final row in _parsedRows) {
-        final String? teacherUid = finalMapping[row.rawTeacherName];
-        if (teacherUid == null || teacherUid.isEmpty) {
-          debugPrint(
-            'TimetableImportVM: No mapping for "${row.rawTeacherName}", skipping.',
-          );
-          continue;
-        }
+        final String? teacherUid = finalTeacherMapping[row.rawTeacherName];
+        if (teacherUid == null || teacherUid.isEmpty) continue;
+
+        // استخراج اسم المجموعة الطلابية
+        final String groupName = row.studentGroups.isNotEmpty ? row.studentGroups.first : '';
+        final String? departmentId = finalDeptMapping[groupName];
+        final int? level = finalLevelMapping[groupName];
 
         final model = CourseAssignmentModel(
           id: uuid.v4(),
@@ -333,6 +445,8 @@ class TimetableImportViewModel extends ChangeNotifier {
           teacherUid: teacherUid,
           studentGroups: row.studentGroups,
           room: row.room,
+          departmentId: departmentId,
+          level: level,
           syncStatus: 0, // Offline-First
         );
 
@@ -344,10 +458,10 @@ class TimetableImportViewModel extends ChangeNotifier {
         savedCount++;
       }
 
-      // محاولة المزامنة الفورية مع Firestore
+      // محاولة المزامنة الفورية مع Firestore (تحديث السجلات المحلية غير المزامنة فقط)
       try {
         await SyncService.instance.triggerSync();
-        _successMessage = 'تم حفظ $savedCount تعيين بنجاح ومزامنتها مع السحابة (Firestore).';
+        _successMessage = 'تم حفظ $savedCount تعيين بنجاح ومزامنتها تلقائياً مع السحابة (Firestore).';
       } catch (syncError) {
         debugPrint('TimetableImportVM: Sync failed or offline: $syncError');
         _successMessage = 'تم حفظ $savedCount تعيين بنجاح محلياً. (ستتم المزامنة تلقائياً عند توفر الإنترنت)';
@@ -367,8 +481,13 @@ class TimetableImportViewModel extends ChangeNotifier {
   void reset() {
     _parsedRows = [];
     _unmappedTeacherNames = [];
+    _unmappedGroupNames = [];
     _autoMappings.clear();
+    _autoDeptMappings.clear();
+    _autoLevelMappings.clear();
     _manualMappings.clear();
+    _manualDeptMappings.clear();
+    _manualLevelMappings.clear();
     _selectedFileName = null;
     _currentStep = ImportStep.idle;
     _clearMessages();
@@ -387,7 +506,6 @@ class TimetableImportViewModel extends ChangeNotifier {
 
   /// يُطابق أسماء المعلمين القادمة من CSV مع المسجلين تلقائياً.
   void _matchTeacherNames() {
-    // بناء فهرس: اسم_منظَّف → uid
     final Map<String, String> nameIndex = {};
     for (final teacher in _registeredTeachers) {
       final raw = teacher['name'] as String? ?? '';
@@ -402,10 +520,8 @@ class TimetableImportViewModel extends ChangeNotifier {
     for (final row in _parsedRows) {
       final rawName = row.rawTeacherName;
 
-      // إذا كان في كاش الربط اليدوي السابق نتخطاه
       if (_manualMappings.containsKey(rawName)) continue;
 
-      // تجربة التطابق التلقائي
       final sanitizedCsvName = NameSanitizer.sanitize(rawName);
       final matchedUid = nameIndex[sanitizedCsvName];
 
@@ -417,6 +533,56 @@ class TimetableImportViewModel extends ChangeNotifier {
     }
 
     _unmappedTeacherNames = unmapped.toList();
+  }
+
+  /// يُطابق المجموعات الطلابية القادمة من CSV مع الأقسام والمستويات تلقائياً.
+  void _matchGroups() {
+    final Set<String> unmapped = {};
+
+    for (final row in _parsedRows) {
+      final String groupName = row.studentGroups.isNotEmpty ? row.studentGroups.first : '';
+      if (groupName.isEmpty) continue;
+
+      if (_manualDeptMappings.containsKey(groupName)) continue;
+
+      // تحليل التخصص والمستوى من اسم المجموعة
+      final parsed = StudentGroupParser.parse(groupName);
+      final String parsedDeptName = parsed['departmentName'] ?? '';
+      final int? parsedLevel = parsed['level'];
+
+      // محاولة إيجاد القسم المقابل
+      Department? matchedDept;
+      final cleanParsedDept = parsedDeptName.replaceAll(' ', '').toLowerCase();
+      
+      for (final dept in _departments) {
+        final cleanDeptName = dept.name.replaceAll(' ', '').toLowerCase();
+        // مطابقة تامة أو جزئية
+        if (cleanDeptName == cleanParsedDept || 
+            cleanDeptName.contains(cleanParsedDept) || 
+            cleanParsedDept.contains(cleanDeptName)) {
+          matchedDept = dept;
+          break;
+        }
+      }
+
+      // إذا وجدنا القسم والمستوى يقع في نطاق عدد مستويات القسم
+      if (matchedDept != null && 
+          parsedLevel != null && 
+          parsedLevel >= 1 && 
+          parsedLevel <= matchedDept.levelsCount) {
+        // نستخدم firestoreId أولاً، وفي حال لم يتوفر بعد (أوفلاين) نستخدم local ID كـ string مؤقت
+        final deptId = (matchedDept.firestoreId != null && matchedDept.firestoreId!.isNotEmpty)
+            ? matchedDept.firestoreId!
+            : matchedDept.id.toString();
+            
+        _autoDeptMappings[groupName] = deptId;
+        _autoLevelMappings[groupName] = parsedLevel;
+      } else {
+        unmapped.add(groupName);
+      }
+    }
+
+    _unmappedGroupNames = unmapped.toList();
   }
 
   void _clearMessages() {

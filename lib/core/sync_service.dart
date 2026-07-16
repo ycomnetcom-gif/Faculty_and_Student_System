@@ -94,6 +94,21 @@ class SyncService {
     final firestore = FirebaseFirestore.instance;
     int syncedCount = 0;
 
+    List<String> parseTracks(dynamic tracksVal) {
+      if (tracksVal == null) return [];
+      if (tracksVal is List) return tracksVal.cast<String>();
+      if (tracksVal is String) {
+        if (tracksVal.trim().isEmpty) return [];
+        try {
+          final decoded = jsonDecode(tracksVal);
+          if (decoded is List) return decoded.cast<String>();
+        } catch (_) {
+          return tracksVal.split(',').map((t) => t.trim()).where((t) => t.isNotEmpty).toList();
+        }
+      }
+      return [];
+    }
+
     for (final deptMap in unsyncedDepts) {
       final int localId = deptMap['id'];
       final String? firestoreId = deptMap['firestore_id'];
@@ -110,6 +125,10 @@ class SyncService {
             'createdAt': localCreatedAt != null
                 ? Timestamp.fromDate(DateTime.parse(localCreatedAt))
                 : FieldValue.serverTimestamp(),
+            'levels_count': deptMap['levels_count'] ?? 4,
+            'has_tracks': (deptMap['has_tracks'] ?? 0) == 1,
+            'tracks': parseTracks(deptMap['tracks']),
+            'start_level_for_tracks': deptMap['start_level_for_tracks'],
           });
 
           // تحديث حالة المزامنة وحفظ الـ firestore_id محلياً
@@ -131,6 +150,10 @@ class SyncService {
             'head_id': deptMap['head_id'],
             'head_name': deptMap['head_name'],
             'updatedAt': FieldValue.serverTimestamp(),
+            'levels_count': deptMap['levels_count'] ?? 4,
+            'has_tracks': (deptMap['has_tracks'] ?? 0) == 1,
+            'tracks': parseTracks(deptMap['tracks']),
+            'start_level_for_tracks': deptMap['start_level_for_tracks'],
           }, SetOptions(merge: true));
 
           // تحديث حالة المزامنة في SQLite محلياً إلى 1
@@ -246,6 +269,8 @@ class SyncService {
           'teacher_uid': row['teacher_uid'] ?? '',
           'student_groups': groups,
           'room': row['room'] ?? '',
+          'department_id': row['department_id'],
+          'level': row['level'],
           'created_at': FieldValue.serverTimestamp(),
         });
 
@@ -353,6 +378,12 @@ class SyncService {
             ? (data['createdAt'] as Timestamp).toDate().toIso8601String() 
             : data['createdAt']?.toString();
 
+        final int levelsCount = data['levels_count'] is int ? data['levels_count'] : 4;
+        final bool hasTracks = data['has_tracks'] is bool ? data['has_tracks'] : false;
+        final List<dynamic> rawTracks = data['tracks'] is List ? data['tracks'] : [];
+        final List<String> tracks = rawTracks.map((t) => t.toString()).toList();
+        final int? startLevelForTracks = data['start_level_for_tracks'] is int ? data['start_level_for_tracks'] : null;
+
         final existing = await db.query(
           'departments',
           where: 'firestore_id = ?',
@@ -368,6 +399,10 @@ class SyncService {
             headName,
             sync: 1,
             firestoreId: firestoreId,
+            levelsCount: levelsCount,
+            hasTracks: hasTracks,
+            tracks: tracks,
+            startLevelForTracks: startLevelForTracks,
           );
         } else {
           await DatabaseHelper.instance.insertDepartment(
@@ -377,6 +412,10 @@ class SyncService {
             sync: 1,
             firestoreId: firestoreId,
             createdAt: createdAt,
+            levelsCount: levelsCount,
+            hasTracks: hasTracks,
+            tracks: tracks,
+            startLevelForTracks: startLevelForTracks,
           );
         }
       }
@@ -396,12 +435,17 @@ class SyncService {
         final List<dynamic> groupsList = data['student_groups'] ?? [];
         final String studentGroupsJson = jsonEncode(groupsList.map((g) => g.toString()).toList());
 
+        final String? departmentId = data['department_id'];
+        final int? level = data['level'] is int ? data['level'] as int : null;
+
         await DatabaseHelper.instance.saveCourseAssignment({
           'id': id,
           'subject_name': subjectName,
           'teacher_uid': teacherUid,
           'student_groups': studentGroupsJson,
           'room': room,
+          'department_id': departmentId,
+          'level': level,
           'sync_status': 1,
         });
       }
@@ -500,7 +544,9 @@ class SyncService {
     return syncedCount;
   }
 
-  // مزامنة مخصصة وسريعة لإعدادات حسابات الطلاب فقط (رفع وتنزيل)
+  // مزامنة مخصصة وسريعة لإعدادات حسابات الطلاب فقط (رفع فقط)
+  // لا نُجري Pull هنا لأن البيانات المحلية هي مصدر الحقيقة بعد كل عملية كتابة.
+  // Pull يحدث فقط في المزامنة الكاملة (syncBidirectional) أو عند الطلب اليدوي.
   Future<int> syncStudentAccountConfigsOnly({String? department}) async {
     final results = await Connectivity().checkConnectivity();
     final hasConnection = results.any((result) => result != ConnectivityResult.none);
@@ -509,36 +555,12 @@ class SyncService {
     }
 
     int totalSynced = 0;
-    
-    // 1. رفع المضاف حديثاً أوفلاين
+
+    // رفع المضاف/المعدَّل محلياً
     totalSynced += await _syncStudentAccountConfigs();
-    
-    // 2. رفع وحذف المحذوف أوفلاين
+
+    // رفع الحذف المحلي
     totalSynced += await _syncDeletedStudentAccountConfigs();
-    
-    // 3. جلب التحديثات الجديدة فقط من كولكشن Configure student accounts
-    try {
-      final firestore = FirebaseFirestore.instance;
-      Query query = firestore.collection('Configure student accounts');
-      if (department != null && department.isNotEmpty) {
-        query = query.where('department', isEqualTo: department);
-      }
-      final snapshot = await query.get().timeout(const Duration(seconds: 10));
-      for (final doc in snapshot.docs) {
-        final data = doc.data() as Map<String, dynamic>;
-        await DatabaseHelper.instance.saveStudentAccountConfig({
-          'registration_id': doc.id,
-          'student_name': data['student_name'] ?? '',
-          'email': data['email'] ?? '',
-          'department': data['department'] ?? '',
-          'level': data['level'] ?? '',
-          'track': data['track'] ?? '',
-          'sync': 1,
-        });
-      }
-    } catch (e) {
-      debugPrint('Error pulling Configure student accounts: $e');
-    }
 
     return totalSynced;
   }

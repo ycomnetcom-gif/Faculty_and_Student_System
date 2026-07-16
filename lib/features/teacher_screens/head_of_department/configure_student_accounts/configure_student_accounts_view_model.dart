@@ -27,25 +27,47 @@ class ConfigureStudentAccountsViewModel extends ChangeNotifier {
   String? get successMessage => _successMessage;
   String? get errorMessage => _errorMessage;
 
-  final List<String> levels = [
+  List<String> _levels = [
     'المستوى الأول',
     'المستوى الثاني',
     'المستوى الثالث',
     'المستوى الرابع',
   ];
+  List<String> get levels => _levels;
 
-  final List<String> tracks = ['الخطة العامة', 'برمجيات', 'شبكات'];
+  List<String> _tracks = ['الخطة العامة'];
+  List<String> get tracks => _tracks;
 
   ConfigureStudentAccountsViewModel() {
     _loadDepartment();
     fetchConfigs();
   }
 
+  // ─── دالة مساعدة لتقليل تكرار بوابة التحميل ──────────────────────────────
+  Future<void> _runOperation(Future<void> Function() action) async {
+    _isLoading = true;
+    _successMessage = null;
+    _errorMessage = null;
+    notifyListeners();
+    try {
+      await action();
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  // ─── مساعد: تحديث القائمة من DB مباشرةً ─────────────────────────────────
+  Future<void> _refreshLocalConfigs() async {
+    final maps = await DatabaseHelper.instance.getAllStudentAccountConfigs();
+    _configs = maps.map((m) => StudentAccountConfigModel.fromMap(m)).toList();
+  }
+
+  // ─── تحميل بيانات القسم ──────────────────────────────────────────────────
   Future<void> _loadDepartment() async {
     final prefs = await SharedPreferences.getInstance();
-    _department = prefs.getString('department') ?? 'غير مححدد';
+    _department = prefs.getString('department') ?? 'غير محدد';
     if (_department == 'غير محدد' || _department == 'غير مححدد') {
-      // محاولة استرجاع القسم من قاعدة البيانات المحلية لمزيد من الموثوقية
       try {
         final userId = prefs.getString('id');
         if (userId != null) {
@@ -58,7 +80,65 @@ class ConfigureStudentAccountsViewModel extends ChangeNotifier {
         debugPrint('Error retrieving local user department: $e');
       }
     }
+    await _loadLevelsAndTracksFromDb();
     notifyListeners();
+  }
+
+  Future<void> _loadLevelsAndTracksFromDb() async {
+    try {
+      final db = await DatabaseHelper.instance.database;
+      final List<Map<String, dynamic>> result = await db.query(
+        'departments',
+        where: 'name = ? AND sync != 2',
+        whereArgs: [_department],
+        limit: 1,
+      );
+
+      if (result.isNotEmpty) {
+        final row = result.first;
+        _updateLevelsList(row['levels_count'] is int ? row['levels_count'] : 4);
+
+        final int hasTracksVal = row['has_tracks'] is int ? row['has_tracks'] : 0;
+        if (hasTracksVal == 1 && row['tracks'] != null) {
+          try {
+            final parsed = List<String>.from(jsonDecode(row['tracks'] as String));
+            final unique = <String>{'الخطة العامة'};
+            unique.addAll(parsed.where((t) => t.trim().isNotEmpty));
+            _tracks = unique.toList();
+          } catch (e) {
+            debugPrint('Error parsing tracks: $e');
+            _tracks = ['الخطة العامة'];
+          }
+        } else {
+          _tracks = ['الخطة العامة'];
+        }
+      } else {
+        _updateLevelsList(4);
+        _tracks = ['الخطة العامة'];
+      }
+    } catch (e) {
+      debugPrint('Error loading department config from local DB: $e');
+      _updateLevelsList(4);
+      _tracks = ['الخطة العامة'];
+    }
+
+    if (!_tracks.contains(_selectedTrack)) _selectedTrack = _tracks.first;
+  }
+
+  void _updateLevelsList(int count) {
+    const arabicLevels = [
+      'المستوى الأول',
+      'المستوى الثاني',
+      'المستوى الثالث',
+      'المستوى الرابع',
+      'المستوى الخامس',
+      'المستوى السادس',
+      'المستوى السابع',
+      'المستوى الثامن',
+    ];
+    _levels = arabicLevels.take(count).toList();
+    if (_levels.isEmpty) _levels = ['المستوى الأول'];
+    if (!_levels.contains(_selectedLevel)) _selectedLevel = _levels.first;
   }
 
   void setLevel(String value) {
@@ -71,12 +151,12 @@ class ConfigureStudentAccountsViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ─── جلب القائمة المحلية ──────────────────────────────────────────────────
   Future<void> fetchConfigs() async {
     _isLoading = true;
     notifyListeners();
     try {
-      final maps = await DatabaseHelper.instance.getAllStudentAccountConfigs();
-      _configs = maps.map((m) => StudentAccountConfigModel.fromMap(m)).toList();
+      await _refreshLocalConfigs();
     } catch (e) {
       _errorMessage = 'حدث خطأ أثناء تحميل الحسابات المحلية: $e';
     } finally {
@@ -85,121 +165,72 @@ class ConfigureStudentAccountsViewModel extends ChangeNotifier {
     }
   }
 
-  // استيراد ومعالجة ملف Excel أو CSV
-  Future<void> importStudentAccounts() async {
-    _isLoading = true;
-    _successMessage = null;
-    _errorMessage = null;
-    notifyListeners();
+  // ─── مساعدات قراءة ملفات الاستيراد ──────────────────────────────────────
 
-    try {
-      FilePickerResult? result = await FilePicker.platform.pickFiles(
+  List<int?> _detectColumnIndices(List<dynamic> headerRow) {
+    int? nameIdx, regIdx, emailIdx;
+    for (int i = 0; i < headerRow.length; i++) {
+      final v = headerRow[i]?.toString().trim();
+      if (v == 'اسم الطالب') nameIdx = i;
+      if (v == 'رقم القيد') regIdx = i;
+      if (v == 'البريد الإلكتروني') emailIdx = i;
+    }
+    return [nameIdx ?? 0, regIdx ?? 1, emailIdx ?? 2];
+  }
+
+  Map<String, String>? _extractRow(List<dynamic> row, List<int?> idx) {
+    final ni = idx[0]!, ri = idx[1]!, ei = idx[2]!;
+    if (row.length <= ni || row.length <= ri || row.length <= ei) return null;
+    final name = row[ni].toString().trim();
+    final regId = row[ri].toString().trim();
+    final email = row[ei].toString().trim();
+    if (name.isEmpty || regId.isEmpty || email.isEmpty) return null;
+    return {'name': name, 'registration_id': regId, 'email': email};
+  }
+
+  List<Map<String, String>> _parseXlsx(String filePath) {
+    final data = <Map<String, String>>[];
+    final bytes = File(filePath).readAsBytesSync();
+    final decoder = SpreadsheetDecoder.decodeBytes(bytes);
+    for (final tableName in decoder.tables.keys) {
+      final table = decoder.tables[tableName];
+      if (table == null || table.rows.isEmpty) continue;
+      final idx = _detectColumnIndices(table.rows.first);
+      for (int r = 1; r < table.rows.length; r++) {
+        final entry = _extractRow(table.rows[r], idx);
+        if (entry != null) data.add(entry);
+      }
+    }
+    return data;
+  }
+
+  Future<List<Map<String, String>>> _parseCsv(String filePath) async {
+    final data = <Map<String, String>>[];
+    final csvString = await File(filePath).readAsString(encoding: utf8);
+    final rows = const CsvToListConverter().convert(csvString);
+    if (rows.isEmpty) return data;
+    final idx = _detectColumnIndices(rows.first);
+    for (int r = 1; r < rows.length; r++) {
+      final entry = _extractRow(rows[r], idx);
+      if (entry != null) data.add(entry);
+    }
+    return data;
+  }
+
+  // ─── استيراد ملف Excel / CSV ──────────────────────────────────────────────
+  Future<void> importStudentAccounts() async {
+    await _runOperation(() async {
+      final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['xlsx', 'csv'],
       );
-
-      if (result == null || result.files.single.path == null) {
-        _isLoading = false;
-        notifyListeners();
-        return;
-      }
+      if (result == null || result.files.single.path == null) return;
 
       final filePath = result.files.single.path!;
-      final fileExtension = filePath.split('.').last.toLowerCase();
-      List<Map<String, String>> studentsData = [];
-
-      if (fileExtension == 'xlsx') {
-        // قراءة ملف Excel (.xlsx)
-        final bytes = File(filePath).readAsBytesSync();
-        final decoder = SpreadsheetDecoder.decodeBytes(bytes);
-        for (var tableName in decoder.tables.keys) {
-          var table = decoder.tables[tableName];
-          if (table == null || table.rows.isEmpty) continue;
-
-          // تحديد فهارس الأعمدة بناءً على العناوين
-          var firstRow = table.rows.first;
-          int nameIndex = -1;
-          int regIndex = -1;
-          int emailIndex = -1;
-
-          for (int i = 0; i < firstRow.length; i++) {
-            final cellVal = firstRow[i]?.toString().trim();
-            if (cellVal == "اسم الطالب") nameIndex = i;
-            if (cellVal == "رقم القيد") regIndex = i;
-            if (cellVal == "البريد الإلكتروني") emailIndex = i;
-          }
-
-          // فحص بديل إذا لم يعثر على العناوين بالاسم
-          if (nameIndex == -1) nameIndex = 0;
-          if (regIndex == -1) regIndex = 1;
-          if (emailIndex == -1) emailIndex = 2;
-
-          for (int r = 1; r < table.rows.length; r++) {
-            var row = table.rows[r];
-            if (row.length <= nameIndex ||
-                row.length <= regIndex ||
-                row.length <= emailIndex)
-              continue;
-
-            String name = row[nameIndex]?.toString().trim() ?? '';
-            String regId = row[regIndex]?.toString().trim() ?? '';
-            String email = row[emailIndex]?.toString().trim() ?? '';
-
-            if (name.isNotEmpty && regId.isNotEmpty && email.isNotEmpty) {
-              studentsData.add({
-                'name': name,
-                'registration_id': regId,
-                'email': email,
-              });
-            }
-          }
-        }
-      } else if (fileExtension == 'csv') {
-        // قراءة ملف CSV (.csv)
-        final csvFile = File(filePath);
-        final csvString = await csvFile.readAsString(encoding: utf8);
-        final List<List<dynamic>> rows = const CsvToListConverter().convert(
-          csvString,
-        );
-
-        if (rows.isNotEmpty) {
-          var firstRow = rows.first;
-          int nameIndex = -1;
-          int regIndex = -1;
-          int emailIndex = -1;
-
-          for (int i = 0; i < firstRow.length; i++) {
-            final cellVal = firstRow[i]?.toString().trim();
-            if (cellVal == "اسم الطالب") nameIndex = i;
-            if (cellVal == "رقم القيد") regIndex = i;
-            if (cellVal == "البريد الإلكتروني") emailIndex = i;
-          }
-
-          if (nameIndex == -1) nameIndex = 0;
-          if (regIndex == -1) regIndex = 1;
-          if (emailIndex == -1) emailIndex = 2;
-
-          for (int r = 1; r < rows.length; r++) {
-            var row = rows[r];
-            if (row.length <= nameIndex ||
-                row.length <= regIndex ||
-                row.length <= emailIndex)
-              continue;
-
-            String name = row[nameIndex]?.toString().trim() ?? '';
-            String regId = row[regIndex]?.toString().trim() ?? '';
-            String email = row[emailIndex]?.toString().trim() ?? '';
-
-            if (name.isNotEmpty && regId.isNotEmpty && email.isNotEmpty) {
-              studentsData.add({
-                'name': name,
-                'registration_id': regId,
-                'email': email,
-              });
-            }
-          }
-        }
-      }
+      final ext = filePath.split('.').last.toLowerCase();
+      final studentsData = ext == 'xlsx'
+          ? _parseXlsx(filePath)
+          : await _parseCsv(filePath);
 
       if (studentsData.isEmpty) {
         throw Exception(
@@ -207,176 +238,131 @@ class ConfigureStudentAccountsViewModel extends ChangeNotifier {
         );
       }
 
-      // حفظ البيانات في SQLite
       int savedCount = 0;
       int skippedDuplicates = 0;
-      final Set<String> processedEmails = {};
-      final Set<String> processedRegIds = {};
+      final processedEmails = <String>{};
+      final processedRegIds = <String>{};
 
-      for (var student in studentsData) {
+      for (final student in studentsData) {
         final regId = student['registration_id']!;
         final email = student['email']!;
         final name = student['name']!;
 
-        // تلافي التكرار داخل نفس الملف المرفوع
         if (processedRegIds.contains(regId) || processedEmails.contains(email)) {
           skippedDuplicates++;
           continue;
         }
-
-        // تلافي تكرار البريد الإلكتروني مع أي طالب آخر في قاعدة البيانات
-        final emailExists = await DatabaseHelper.instance.isStudentEmailExists(email, excludeRegistrationId: regId);
-        if (emailExists) {
+        if (await DatabaseHelper.instance.isRegistrationIdExists(regId)) {
+          skippedDuplicates++;
+          continue;
+        }
+        if (await DatabaseHelper.instance.isStudentEmailExists(email, excludeRegistrationId: regId)) {
           skippedDuplicates++;
           continue;
         }
 
         processedRegIds.add(regId);
         processedEmails.add(email);
-
-        final model = StudentAccountConfigModel(
-          registrationId: regId,
-          studentName: name,
-          email: email,
-          department: _department,
-          level: _selectedLevel,
-          track: _selectedTrack,
-          syncStatus: 0,
+        await DatabaseHelper.instance.saveStudentAccountConfig(
+          StudentAccountConfigModel(
+            registrationId: regId,
+            studentName: name,
+            email: email,
+            department: _department,
+            level: _selectedLevel,
+            track: _selectedTrack,
+            syncStatus: 0,
+          ).toMap(),
         );
-
-        await DatabaseHelper.instance.saveStudentAccountConfig(model.toMap());
         savedCount++;
       }
 
       if (savedCount == 0 && skippedDuplicates > 0) {
-        throw Exception('جميع الطلاب في الملف مكررين بالفعل (سواء رقم القيد أو البريد الإلكتروني).');
+        throw Exception('جميع الطلاب في الملف مكررين بالفعل.');
       }
 
+      await _refreshLocalConfigs();
       _successMessage = skippedDuplicates > 0
-          ? 'تم استيراد وحفظ $savedCount طالب محلياً بنجاح. (تم تخطي $skippedDuplicates سجلات مكررة)'
-          : 'تم استيراد وحفظ $savedCount طالب محلياً بنجاح.';
-      await fetchConfigs();
+          ? 'تم استيراد $savedCount طالب محلياً. (تم تخطي $skippedDuplicates مكررين)'
+          : 'تم استيراد $savedCount طالب محلياً بنجاح.';
 
-      // محاولة المزامنة تلقائياً مع السيرفر
+      // رفع فقط — بدون Pull لتوفير quota القراءة
       try {
-        await SyncService.instance.syncStudentAccountConfigsOnly(
-          department: _department,
-        );
-        await fetchConfigs();
+        await SyncService.instance.syncStudentAccountConfigsOnly(department: _department);
+        await _refreshLocalConfigs();
         _successMessage = skippedDuplicates > 0
-            ? 'تم استيراد وحفظ $savedCount طالب ومزامنتهم تلقائياً. (تم تخطي $skippedDuplicates سجلات مكررة)'
-            : 'تم استيراد وحفظ $savedCount طالب ومزامنتهم مع السيرفر تلقائياً.';
+            ? 'تم استيراد $savedCount طالب ومزامنتهم. (تم تخطي $skippedDuplicates مكررين)'
+            : 'تم استيراد $savedCount طالب ومزامنتهم تلقائياً.';
       } catch (syncError) {
-        debugPrint('Auto sync failed (saved locally): $syncError');
+        debugPrint('Auto sync failed: $syncError');
         _successMessage = skippedDuplicates > 0
-            ? 'تم حفظ $savedCount طالب محلياً. (تم تخطي $skippedDuplicates مكررين، وسيتم المزامنة عند توفر اتصال بالإنترنت)'
-            : 'تم حفظ $savedCount طالب محلياً. (سيتم مزامنتهم عند توفر اتصال بالإنترنت)';
+            ? 'تم حفظ $savedCount طالب محلياً. (تم تخطي $skippedDuplicates، المزامنة عند الإنترنت)'
+            : 'تم حفظ $savedCount طالب محلياً. (سيتم مزامنتهم عند توفر الإنترنت)';
       }
-    } catch (e) {
-      _errorMessage =
-          'فشل استيراد الملف: ${e.toString().replaceAll('Exception:', '')}';
-    } finally {
-      _isLoading = false;
-      notifyListeners();
-    }
+    });
   }
 
-  // إضافة حساب طالب يدوياً
+  // ─── إضافة يدوية ─────────────────────────────────────────────────────────
   Future<void> addStudentAccountConfig({
     required String name,
     required String registrationId,
     required String email,
   }) async {
-    if (name.trim().isEmpty ||
-        registrationId.trim().isEmpty ||
-        email.trim().isEmpty) {
+    if (name.trim().isEmpty || registrationId.trim().isEmpty || email.trim().isEmpty) {
       _errorMessage = 'الرجاء ملء جميع الحقول المطلوبة.';
       notifyListeners();
       return;
     }
 
-    _isLoading = true;
-    _successMessage = null;
-    _errorMessage = null;
-    notifyListeners();
-
-    try {
-      // التحقق من تكرار رقم القيد
-      final allConfigs = await DatabaseHelper.instance.getAllStudentAccountConfigs();
-      final registrationIdExists = allConfigs.any((c) => c['registration_id'] == registrationId.trim());
-      if (registrationIdExists) {
+    await _runOperation(() async {
+      if (await DatabaseHelper.instance.isRegistrationIdExists(registrationId.trim())) {
         _errorMessage = 'رقم القيد هذا مستخدم بالفعل لطالب آخر.';
-        _isLoading = false;
-        notifyListeners();
         return;
       }
-
-      // التحقق من تكرار البريد الإلكتروني
-      final emailExists = await DatabaseHelper.instance.isStudentEmailExists(email.trim());
-      if (emailExists) {
+      if (await DatabaseHelper.instance.isStudentEmailExists(email.trim())) {
         _errorMessage = 'البريد الإلكتروني هذا مستخدم بالفعل لطالب آخر.';
-        _isLoading = false;
-        notifyListeners();
         return;
       }
 
-      final model = StudentAccountConfigModel(
-        registrationId: registrationId.trim(),
-        studentName: name.trim(),
-        email: email.trim(),
-        department: _department,
-        level: _selectedLevel,
-        track: _selectedTrack,
-        syncStatus: 0,
+      await DatabaseHelper.instance.saveStudentAccountConfig(
+        StudentAccountConfigModel(
+          registrationId: registrationId.trim(),
+          studentName: name.trim(),
+          email: email.trim(),
+          department: _department,
+          level: _selectedLevel,
+          track: _selectedTrack,
+          syncStatus: 0,
+        ).toMap(),
       );
 
-      await DatabaseHelper.instance.saveStudentAccountConfig(model.toMap());
-      await fetchConfigs();
+      await _refreshLocalConfigs();
       _successMessage = 'تم إضافة الطالب "$name" محلياً بنجاح.';
 
-      // محاولة المزامنة تلقائياً
       try {
-        await SyncService.instance.syncStudentAccountConfigsOnly(
-          department: _department,
-        );
-        await fetchConfigs();
-        _successMessage =
-            'تم إضافة الطالب "$name" ومزامنته مع السيرفر تلقائياً.';
+        await SyncService.instance.syncStudentAccountConfigsOnly(department: _department);
+        await _refreshLocalConfigs();
+        _successMessage = 'تم إضافة الطالب "$name" ومزامنته مع السيرفر تلقائياً.';
       } catch (syncError) {
-        debugPrint('Auto sync failed (saved locally): $syncError');
-        _successMessage =
-            'تم إضافة الطالب "$name" محلياً (سيتم مزامنته عند توفر اتصال بالإنترنت).';
+        debugPrint('Auto sync failed: $syncError');
+        _successMessage = 'تم إضافة الطالب "$name" محلياً (سيتم مزامنته عند توفر الإنترنت).';
       }
-    } catch (e) {
-      _errorMessage = 'فشلت إضافة الطالب: $e';
-    } finally {
-      _isLoading = false;
-      notifyListeners();
-    }
+    });
   }
 
-  // مزامنة يدوية
+  // ─── مزامنة يدوية ────────────────────────────────────────────────────────
   Future<void> syncConfigs() async {
-    _isLoading = true;
-    _successMessage = null;
-    _errorMessage = null;
-    notifyListeners();
-
-    try {
-      await SyncService.instance.syncStudentAccountConfigsOnly(
-        department: _department,
-      );
-      await fetchConfigs();
-      _successMessage = 'تمت مزامنة كافة إعدادات الطلاب بنجاح.';
-    } catch (e) {
-      final errorMsg = e.toString().contains('no_internet')
-          ? 'لا يوجد اتصال بالإنترنت حالياً.'
-          : 'فشلت المزامنة: $e';
-      _errorMessage = errorMsg;
-    } finally {
-      _isLoading = false;
-      notifyListeners();
-    }
+    await _runOperation(() async {
+      try {
+        await SyncService.instance.syncStudentAccountConfigsOnly(department: _department);
+        await _refreshLocalConfigs();
+        _successMessage = 'تمت مزامنة كافة إعدادات الطلاب بنجاح.';
+      } catch (e) {
+        _errorMessage = e.toString().contains('no_internet')
+            ? 'لا يوجد اتصال بالإنترنت حالياً.'
+            : 'فشلت المزامنة: $e';
+      }
+    });
   }
 
   void clearMessages() {
@@ -385,22 +371,21 @@ class ConfigureStudentAccountsViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  // حذف تكوين طالب
+  // ─── حذف ─────────────────────────────────────────────────────────────────
   Future<void> deleteConfig(String regId) async {
     await DatabaseHelper.instance.deleteStudentAccountConfig(regId);
-    await fetchConfigs();
+    await _refreshLocalConfigs();
+    notifyListeners();
 
-    // محاولة مزامنة الحذف مع السيرفر
+    // مزامنة الحذف في الخلفية بدون تغيير حالة isLoading
     try {
-      await SyncService.instance.syncStudentAccountConfigsOnly(
-        department: _department,
-      );
+      await SyncService.instance.syncStudentAccountConfigsOnly(department: _department);
     } catch (e) {
-      debugPrint('Auto sync deletion failed (marked for offline deletion): $e');
+      debugPrint('Auto sync deletion failed: $e');
     }
   }
 
-  // تعديل حساب طالب
+  // ─── تعديل ───────────────────────────────────────────────────────────────
   Future<void> updateStudentAccountConfig({
     required String registrationId,
     required String name,
@@ -414,51 +399,37 @@ class ConfigureStudentAccountsViewModel extends ChangeNotifier {
       return;
     }
 
-    _isLoading = true;
-    _successMessage = null;
-    _errorMessage = null;
-    notifyListeners();
-
-    try {
-      // التحقق من تكرار البريد الإلكتروني مع طالب آخر
-      final emailExists = await DatabaseHelper.instance.isStudentEmailExists(email.trim(), excludeRegistrationId: registrationId);
-      if (emailExists) {
+    await _runOperation(() async {
+      if (await DatabaseHelper.instance.isStudentEmailExists(
+        email.trim(),
+        excludeRegistrationId: registrationId,
+      )) {
         _errorMessage = 'البريد الإلكتروني هذا مستخدم بالفعل لطالب آخر.';
-        _isLoading = false;
-        notifyListeners();
         return;
       }
 
-      final model = StudentAccountConfigModel(
-        registrationId: registrationId,
-        studentName: name.trim(),
-        email: email.trim(),
-        department: _department,
-        level: level,
-        track: track,
-        syncStatus: 0, // يعاد تعيينه كـ 0 لمزامنته مجدداً كـ تحديث/تعديل
+      await DatabaseHelper.instance.saveStudentAccountConfig(
+        StudentAccountConfigModel(
+          registrationId: registrationId,
+          studentName: name.trim(),
+          email: email.trim(),
+          department: _department,
+          level: level,
+          track: track,
+          syncStatus: 0,
+        ).toMap(),
       );
 
-      await DatabaseHelper.instance.saveStudentAccountConfig(model.toMap());
-      await fetchConfigs();
+      await _refreshLocalConfigs();
       _successMessage = 'تم تعديل بيانات الطالب "$name" محلياً بنجاح.';
 
-      // محاولة المزامنة تلقائياً
       try {
-        await SyncService.instance.syncStudentAccountConfigsOnly(
-          department: _department,
-        );
-        await fetchConfigs();
-        _successMessage =
-            'تم تعديل بيانات الطالب "$name" ومزامنتها مع السيرفر تلقائياً.';
+        await SyncService.instance.syncStudentAccountConfigsOnly(department: _department);
+        await _refreshLocalConfigs();
+        _successMessage = 'تم تعديل بيانات الطالب "$name" ومزامنتها مع السيرفر تلقائياً.';
       } catch (syncError) {
-        debugPrint('Auto sync failed for update (saved locally): $syncError');
+        debugPrint('Auto sync failed for update: $syncError');
       }
-    } catch (e) {
-      _errorMessage = 'فشل تعديل بيانات الطالب: $e';
-    } finally {
-      _isLoading = false;
-      notifyListeners();
-    }
+    });
   }
 }

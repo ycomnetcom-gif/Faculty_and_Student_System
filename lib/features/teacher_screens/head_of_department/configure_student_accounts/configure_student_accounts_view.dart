@@ -16,6 +16,7 @@ class ConfigureStudentAccountsView extends StatefulWidget {
 class _ConfigureStudentAccountsViewState extends State<ConfigureStudentAccountsView> {
   late final ConfigureStudentAccountsViewModel _viewModel;
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
+  bool _isFirstConnectivityEvent = true;
 
   bool _isManualMode = false;
   final _manualFormKey = GlobalKey<FormState>();
@@ -29,7 +30,12 @@ class _ConfigureStudentAccountsViewState extends State<ConfigureStudentAccountsV
     _viewModel = ConfigureStudentAccountsViewModel();
 
     // الاستماع لحالة الاتصال بالإنترنت لمزامنة البيانات تلقائياً فور عودة الشبكة
+    // نتجاهل أول حدث لأنه يُطلق فورياً عند الاشتراك حتى لو لم تتغير الشبكة
     _connectivitySubscription = Connectivity().onConnectivityChanged.listen((List<ConnectivityResult> results) {
+      if (_isFirstConnectivityEvent) {
+        _isFirstConnectivityEvent = false;
+        return;
+      }
       final hasConnection = results.any((result) => result != ConnectivityResult.none);
       if (hasConnection) {
         _viewModel.syncConfigs();
@@ -360,12 +366,18 @@ class _ConfigureStudentAccountsViewState extends State<ConfigureStudentAccountsV
                               children: [
                                 Expanded(
                                   child: ChoiceChip(
-                                    label: const Row(
+                                    label: Row(
                                       mainAxisAlignment: MainAxisAlignment.center,
-                                      children: [
+                                      children: const [
                                         Icon(Icons.upload_file_rounded, size: 16),
                                         SizedBox(width: 6),
-                                        Text('استيراد ملف', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                                        Flexible(
+                                          child: Text(
+                                            'استيراد ملف',
+                                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
                                       ],
                                     ),
                                     selected: !_isManualMode,
@@ -392,12 +404,18 @@ class _ConfigureStudentAccountsViewState extends State<ConfigureStudentAccountsV
                                 const SizedBox(width: 10),
                                 Expanded(
                                   child: ChoiceChip(
-                                    label: const Row(
+                                    label: Row(
                                       mainAxisAlignment: MainAxisAlignment.center,
-                                      children: [
+                                      children: const [
                                         Icon(Icons.person_add_alt_1_rounded, size: 16),
                                         SizedBox(width: 6),
-                                        Text('إضافة يدوية', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                                        Flexible(
+                                          child: Text(
+                                            'إضافة يدوية',
+                                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
                                       ],
                                     ),
                                     selected: _isManualMode,
@@ -452,13 +470,16 @@ class _ConfigureStudentAccountsViewState extends State<ConfigureStudentAccountsV
                                     children: [
                                       const Icon(Icons.upload_file_rounded, color: Colors.white),
                                       const SizedBox(width: 10),
-                                      Text(
-                                        viewModel.isLoading
-                                            ? 'جاري معالجة الملف واستيراده...'
-                                            : 'استيراد قائمة الطلاب (Excel / CSV)',
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.bold,
+                                      Flexible(
+                                        child: Text(
+                                          viewModel.isLoading
+                                              ? 'جاري معالجة الملف واستيراده...'
+                                              : 'استيراد قائمة الطلاب (Excel / CSV)',
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                          textAlign: TextAlign.center,
                                         ),
                                       ),
                                     ],
@@ -590,9 +611,12 @@ class _ConfigureStudentAccountsViewState extends State<ConfigureStudentAccountsV
                                           children: [
                                             const Icon(Icons.save_rounded),
                                             const SizedBox(width: 8),
-                                            Text(
-                                              viewModel.isLoading ? 'جاري الحفظ...' : 'إضافة وحفظ الطالب',
-                                              style: const TextStyle(fontWeight: FontWeight.bold),
+                                            Flexible(
+                                              child: Text(
+                                                viewModel.isLoading ? 'جاري الحفظ...' : 'إضافة وحفظ الطالب',
+                                                style: const TextStyle(fontWeight: FontWeight.bold),
+                                                textAlign: TextAlign.center,
+                                              ),
                                             ),
                                           ],
                                         ),
@@ -673,20 +697,78 @@ class _ConfigureStudentAccountsViewState extends State<ConfigureStudentAccountsV
 
                                 return Card(
                                   margin: const EdgeInsets.only(bottom: 10),
-                                  child: ListTile(
-                                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                                    title: Text(
-                                      student.studentName,
-                                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-                                    ),
-                                    subtitle: Column(
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                                    child: Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
-                                        const SizedBox(height: 4),
-                                        Text('رقم القيد: ${student.registrationId}', style: const TextStyle(fontSize: 13)),
-                                        Text('البريد: ${student.email}', style: const TextStyle(fontSize: 13)),
-                                        const SizedBox(height: 6),
+                                        // اسم الطالب + أزرار التحكم
                                         Row(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Expanded(
+                                              child: Text(
+                                                student.studentName,
+                                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                                              ),
+                                            ),
+                                            // مؤشر حالة المزامنة
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                                              decoration: BoxDecoration(
+                                                color: isSynced
+                                                    ? AppTheme.successColor.withOpacity(0.1)
+                                                    : AppTheme.warningColor.withOpacity(0.1),
+                                                borderRadius: BorderRadius.circular(20),
+                                              ),
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Icon(
+                                                    isSynced ? Icons.check_circle_rounded : Icons.sync_problem_rounded,
+                                                    size: 13,
+                                                    color: isSynced ? AppTheme.successColor : AppTheme.warningColor,
+                                                  ),
+                                                  const SizedBox(width: 3),
+                                                  Text(
+                                                    isSynced ? 'مزامَن' : 'معلق',
+                                                    style: TextStyle(
+                                                      fontSize: 11,
+                                                      fontWeight: FontWeight.bold,
+                                                      color: isSynced ? AppTheme.successColor : AppTheme.warningColor,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                            // زر تعديل
+                                            SizedBox(
+                                              width: 34,
+                                              height: 34,
+                                              child: IconButton(
+                                                padding: EdgeInsets.zero,
+                                                icon: Icon(Icons.edit_outlined, color: theme.colorScheme.primary, size: 20),
+                                                onPressed: () => _showEditBottomSheet(context, student, viewModel),
+                                              ),
+                                            ),
+                                            // زر حذف
+                                            SizedBox(
+                                              width: 34,
+                                              height: 34,
+                                              child: IconButton(
+                                                padding: EdgeInsets.zero,
+                                                icon: const Icon(Icons.delete_outline_rounded, color: AppTheme.errorColor, size: 20),
+                                                onPressed: () => _showDeleteConfirmation(context, student, viewModel),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text('رقم القيد: ${student.registrationId}', style: const TextStyle(fontSize: 12)),
+                                        Text('البريد: ${student.email}', style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis),
+                                        const SizedBox(height: 6),
+                                        // شارة المستوى والمسار
+                                        Wrap(
                                           children: [
                                             Container(
                                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -695,7 +777,7 @@ class _ConfigureStudentAccountsViewState extends State<ConfigureStudentAccountsV
                                                 borderRadius: BorderRadius.circular(6),
                                               ),
                                               child: Text(
-                                                '${student.level} - ${student.track}',
+                                                '${student.level} · ${student.track}',
                                                 style: TextStyle(
                                                   color: theme.colorScheme.primary,
                                                   fontSize: 11,
@@ -704,53 +786,6 @@ class _ConfigureStudentAccountsViewState extends State<ConfigureStudentAccountsV
                                               ),
                                             ),
                                           ],
-                                        )
-                                      ],
-                                    ),
-                                    trailing: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        // مؤشر حالة المزامنة
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                          decoration: BoxDecoration(
-                                            color: isSynced
-                                                ? AppTheme.successColor.withOpacity(0.1)
-                                                : AppTheme.warningColor.withOpacity(0.1),
-                                            borderRadius: BorderRadius.circular(20),
-                                          ),
-                                          child: Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              Icon(
-                                                isSynced ? Icons.check_circle_rounded : Icons.sync_problem_rounded,
-                                                size: 14,
-                                                color: isSynced ? AppTheme.successColor : AppTheme.warningColor,
-                                              ),
-                                              const SizedBox(width: 4),
-                                              Text(
-                                                isSynced ? 'مزامَن' : 'معلق',
-                                                style: TextStyle(
-                                                  fontSize: 11,
-                                                  fontWeight: FontWeight.bold,
-                                                  color: isSynced ? AppTheme.successColor : AppTheme.warningColor,
-                                                  fontFamily: 'Cairo',
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                        const SizedBox(width: 8),
-                                        // زر تعديل السجل
-                                        IconButton(
-                                          icon: Icon(Icons.edit_outlined, color: theme.colorScheme.primary, size: 22),
-                                          onPressed: () => _showEditBottomSheet(context, student, viewModel),
-                                        ),
-                                        const SizedBox(width: 4),
-                                        // زر حذف السجل
-                                        IconButton(
-                                          icon: const Icon(Icons.delete_outline_rounded, color: AppTheme.errorColor, size: 22),
-                                          onPressed: () => _showDeleteConfirmation(context, student, viewModel),
                                         ),
                                       ],
                                     ),

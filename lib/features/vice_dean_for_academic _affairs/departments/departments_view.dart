@@ -20,6 +20,12 @@ class _DepartmentsViewState extends State<DepartmentsView> {
 
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
 
+  int _levelsCount = 4;
+  bool _hasTracks = false;
+  List<String> _tracks = [];
+  int? _startLevelForTracks;
+  final _trackNameController = TextEditingController();
+
   @override
   void initState() {
     super.initState();
@@ -40,6 +46,7 @@ class _DepartmentsViewState extends State<DepartmentsView> {
   @override
   void dispose() {
     _deptNameController.dispose();
+    _trackNameController.dispose();
     _connectivitySubscription?.cancel();
     super.dispose();
   }
@@ -56,6 +63,15 @@ class _DepartmentsViewState extends State<DepartmentsView> {
       );
       return;
     }
+    if (_hasTracks && _tracks.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('الرجاء إضافة مسار واحد على الأقل أو إلغاء تفعيل خيار المسارات'),
+          backgroundColor: AppTheme.errorColor,
+        ),
+      );
+      return;
+    }
 
     final String deptName = _deptNameController.text.trim();
     final String headId = viewModel.selectedUser!.id;
@@ -65,6 +81,10 @@ class _DepartmentsViewState extends State<DepartmentsView> {
       deptName: deptName,
       headId: headId,
       headName: headName,
+      levelsCount: _levelsCount,
+      hasTracks: _hasTracks,
+      tracks: _hasTracks ? _tracks : [],
+      startLevelForTracks: _hasTracks ? _startLevelForTracks : null,
     );
 
     if (mounted) {
@@ -99,6 +119,13 @@ class _DepartmentsViewState extends State<DepartmentsView> {
       _deptNameController.clear();
       if (_headController != null) _headController!.clear();
       viewModel.setEditingDepartment(null);
+      setState(() {
+        _levelsCount = 4;
+        _hasTracks = false;
+        _tracks = [];
+        _startLevelForTracks = null;
+        _trackNameController.clear();
+      });
     }
   }
 
@@ -173,26 +200,36 @@ class _DepartmentsViewState extends State<DepartmentsView> {
               ),
             ],
           ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildDetailRow(context, 'اسم القسم:', dept.name, Icons.label_important_outline_rounded),
-              const SizedBox(height: 12),
-              _buildDetailRow(context, 'رئيس القسم:', dept.headName.isNotEmpty ? dept.headName : 'غير معين', Icons.person_outline_rounded),
-              const SizedBox(height: 12),
-              _buildDetailRow(context, 'معرف رئيس القسم:', dept.headId.isNotEmpty ? dept.headId : 'غير متوفر', Icons.vpn_key_outlined),
-              const SizedBox(height: 12),
-              _buildDetailRow(context, 'تاريخ الإنشاء:', _formatDateTime(dept.createdAt), Icons.calendar_today_rounded),
-              const SizedBox(height: 12),
-              _buildDetailRow(
-                context,
-                'حالة المزامنة:',
-                isSynced ? 'متزامن بنجاح' : 'معلق الرفع (أوفلاين)',
-                Icons.sync_rounded,
-                valueColor: isSynced ? AppTheme.successColor : AppTheme.warningColor,
-              ),
-            ],
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildDetailRow(context, 'اسم القسم:', dept.name, Icons.label_important_outline_rounded),
+                const SizedBox(height: 12),
+                _buildDetailRow(context, 'رئيس القسم:', dept.headName.isNotEmpty ? dept.headName : 'غير معين', Icons.person_outline_rounded),
+                const SizedBox(height: 12),
+                _buildDetailRow(context, 'عدد المستويات الدراسية:', '${dept.levelsCount} مستويات', Icons.layers_outlined),
+                const SizedBox(height: 12),
+                _buildDetailRow(context, 'المسارات الدراسية:', dept.hasTracks ? 'يحتوي على مسارات تخصصية' : 'لا يحتوي على مسارات (قسم عام)', Icons.merge_type_rounded),
+                if (dept.hasTracks) ...[
+                  const SizedBox(height: 12),
+                  _buildDetailRow(context, 'مستوى بدء المسار:', 'المستوى ${dept.startLevelForTracks ?? 3}', Icons.ads_click_rounded),
+                  const SizedBox(height: 12),
+                  _buildDetailRow(context, 'قائمة المسارات:', dept.tracks.isEmpty ? 'لم يتم تحديد مسارات' : dept.tracks.join('، '), Icons.list_alt_rounded),
+                ],
+                const SizedBox(height: 12),
+                _buildDetailRow(context, 'تاريخ الإنشاء:', _formatDateTime(dept.createdAt), Icons.calendar_today_rounded),
+                const SizedBox(height: 12),
+                _buildDetailRow(
+                  context,
+                  'حالة المزامنة:',
+                  isSynced ? 'متزامن بنجاح' : 'معلق الرفع (أوفلاين)',
+                  Icons.sync_rounded,
+                  valueColor: isSynced ? AppTheme.successColor : AppTheme.warningColor,
+                ),
+              ],
+            ),
           ),
           actions: [
             TextButton(
@@ -414,6 +451,13 @@ class _DepartmentsViewState extends State<DepartmentsView> {
                                     viewModel.setEditingDepartment(null);
                                     _deptNameController.clear();
                                     if (_headController != null) _headController!.clear();
+                                    setState(() {
+                                      _levelsCount = 4;
+                                      _hasTracks = false;
+                                      _tracks = [];
+                                      _startLevelForTracks = null;
+                                      _trackNameController.clear();
+                                    });
                                   },
                                   style: TextButton.styleFrom(
                                     foregroundColor: AppTheme.errorColor,
@@ -561,6 +605,198 @@ class _DepartmentsViewState extends State<DepartmentsView> {
                               );
                             },
                           ),
+                          const SizedBox(height: 20),
+
+                          // حقل عدد المستويات الدراسية
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'عدد المستويات الدراسية',
+                                      style: theme.textTheme.bodyMedium?.copyWith(
+                                        fontWeight: FontWeight.bold,
+                                        color: theme.colorScheme.onSurface.withOpacity(0.8),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    DropdownButtonFormField<int>(
+                                      value: _levelsCount,
+                                      decoration: const InputDecoration(
+                                        prefixIcon: Icon(Icons.layers_outlined, color: Colors.blue),
+                                        contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                                      ),
+                                      items: List.generate(7, (index) => index + 1)
+                                          .map((val) => DropdownMenuItem<int>(
+                                                value: val,
+                                                child: Text('$val ${val > 2 ? "مستويات" : val == 2 ? "مستويين" : "مستوى"}'),
+                                              ))
+                                          .toList(),
+                                      onChanged: (val) {
+                                        if (val != null) {
+                                          setState(() {
+                                            _levelsCount = val;
+                                            if (_startLevelForTracks != null && _startLevelForTracks! > val) {
+                                              _startLevelForTracks = val;
+                                            }
+                                          });
+                                        }
+                                      },
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+
+                          // حقل هل يحتوي القسم على مسارات
+                          SwitchListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: Text(
+                              'يحتوي هذا القسم على مسارات تخصصية؟',
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: theme.colorScheme.onSurface.withOpacity(0.8),
+                              ),
+                            ),
+                            subtitle: Text(
+                              'قم بتفعيل الخيار لتحديد مسارات القسم ومستوى البدء',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurface.withOpacity(0.5),
+                              ),
+                            ),
+                            value: _hasTracks,
+                            activeColor: theme.colorScheme.primary,
+                            onChanged: (val) {
+                              setState(() {
+                                _hasTracks = val;
+                                if (val) {
+                                  _startLevelForTracks ??= 3; // المستوى الافتراضي للبدء
+                                } else {
+                                  _startLevelForTracks = null;
+                                  _tracks = [];
+                                }
+                              });
+                            },
+                          ),
+
+                          if (_hasTracks) ...[
+                            const SizedBox(height: 16),
+                            // يبدأ المسار من المستوى
+                            DropdownButtonFormField<int>(
+                              value: _startLevelForTracks,
+                              decoration: const InputDecoration(
+                                labelText: 'يبدأ المسار من المستوى',
+                                prefixIcon: Icon(Icons.ads_click_rounded, color: Colors.blue),
+                                contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                              ),
+                              items: List.generate(_levelsCount, (index) => index + 1)
+                                  .map((val) => DropdownMenuItem<int>(
+                                        value: val,
+                                        child: Text('المستوى $val'),
+                                      ))
+                                  .toList(),
+                              onChanged: (val) {
+                                setState(() {
+                                  _startLevelForTracks = val;
+                                });
+                              },
+                              validator: (val) {
+                                if (_hasTracks && val == null) {
+                                  return 'الرجاء اختيار مستوى بدء المسارات';
+                                }
+                                return null;
+                              },
+                            ),
+                            const SizedBox(height: 20),
+
+                            // إضافة المسارات التخصصية
+                            Text(
+                              'المسارات المضافة للقسم',
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: theme.colorScheme.onSurface.withOpacity(0.8),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: TextFormField(
+                                    controller: _trackNameController,
+                                    decoration: const InputDecoration(
+                                      hintText: 'مثال: هندسة البرمجيات، شبكات، إلخ',
+                                      prefixIcon: Icon(Icons.merge_type_rounded, color: Colors.blue),
+                                      contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                ElevatedButton(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: theme.colorScheme.primary.withOpacity(0.1),
+                                    foregroundColor: theme.colorScheme.primary,
+                                    padding: const EdgeInsets.all(14),
+                                    minimumSize: Size.zero,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                  ),
+                                  onPressed: () {
+                                    final trackName = _trackNameController.text.trim();
+                                    if (trackName.isNotEmpty) {
+                                      if (_tracks.contains(trackName)) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(
+                                            content: Text('هذا المسار مضاف بالفعل'),
+                                            backgroundColor: AppTheme.warningColor,
+                                          ),
+                                        );
+                                        return;
+                                      }
+                                      setState(() {
+                                        _tracks.add(trackName);
+                                        _trackNameController.clear();
+                                      });
+                                    }
+                                  },
+                                  child: const Icon(Icons.add_rounded),
+                                ),
+                              ],
+                            ),
+                            if (_tracks.isNotEmpty) ...[
+                              const SizedBox(height: 12),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: _tracks.map((track) {
+                                  return Chip(
+                                    label: Text(track, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                                    backgroundColor: theme.colorScheme.primary.withOpacity(0.08),
+                                    deleteIconColor: AppTheme.errorColor,
+                                    onDeleted: () {
+                                      setState(() {
+                                        _tracks.remove(track);
+                                      });
+                                    },
+                                  );
+                                }).toList(),
+                              ),
+                            ] else ...[
+                              const SizedBox(height: 8),
+                              Text(
+                                'لم يتم إضافة أي مسارات بعد. يرجى كتابة اسم المسار والضغط على زر +',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: theme.colorScheme.onSurface.withOpacity(0.4),
+                                  fontStyle: FontStyle.italic,
+                                ),
+                              ),
+                            ],
+                          ],
                           const SizedBox(height: 24),
 
                           // زر إضافة أو تعديل القسم الأكاديمي
@@ -771,6 +1007,12 @@ class _DepartmentsViewState extends State<DepartmentsView> {
                                                       if (_headController != null) {
                                                         _headController!.text = dept.headName;
                                                       }
+                                                      setState(() {
+                                                        _levelsCount = dept.levelsCount;
+                                                        _hasTracks = dept.hasTracks;
+                                                        _tracks = List.from(dept.tracks);
+                                                        _startLevelForTracks = dept.startLevelForTracks;
+                                                      });
                                                     },
                                                   ),
                                                   const SizedBox(width: 8),
